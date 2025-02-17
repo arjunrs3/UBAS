@@ -1,16 +1,15 @@
 """
-uniform_sampler.py
+adaptive_sampler.py
 ===============================
-A sampler which randomly chooses samples between the provided bounds
+A sampler which adaptively chooses samples between the provided bounds from a given probability distribution
 """
-
 import numpy as np
 from numpy.typing import NDArray
 from UBAS.samplers.base_sampler import BaseSampler
 
 
-class UniformSampler(BaseSampler):
-    """Class which uniformly generates samples between given bounds"""
+class AdaptiveSampler(BaseSampler):
+    """Class which adaptively generates samples within given bounds using a provided probability distribution"""
     def __init__(self):
         pass
 
