@@ -5,10 +5,14 @@
 
 UBAS documentation
 ==================
-.. automodule:: UBAS.k_fold_quantile_regressor
+.. automodule:: UBAS
    :members:
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+   :maxdepth: 4
+
+   examples.generators
+   UBAS.generators
+   UBAS.samplers
+   UBAS.regressors
 
