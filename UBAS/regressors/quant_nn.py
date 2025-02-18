@@ -8,8 +8,11 @@ import torch.nn as nn
 import torch.optim as optim
 import numpy as np
 from skorch import NeuralNetRegressor
-from skorch.callbacks import EarlyStopping, ProgressBar
+from skorch.callbacks import ProgressBar
 from sklearn.base import BaseEstimator, RegressorMixin
+import pickle
+import os
+from ..regressors import SAVE_PATH
 
 
 class QuantileLoss(nn.Module):
@@ -85,5 +88,46 @@ class QuantNN(BaseEstimator, RegressorMixin):
         """Predict method to conform to scikit-api"""
         if isinstance(X, np.ndarray):
             X = torch.tensor(X, dtype=torch.float32)
-        quantiles = self.net.predict(X).T
         return self.net.predict(X).T
+
+    def save(self, filename):
+        """Method to serialize the Neural Network"""
+        path = os.path.join(SAVE_PATH, filename)
+        os.makedirs(path, exist_ok=True)
+
+        instance_path = os.path.join(path, 'instance.pkl')
+        params_path = os.path.join(path, 'model.pkl')
+        opt_path = os.path.join(path, 'opt.pkl')
+        hist_path = os.path.join(path, 'history.json')
+
+        self.net.save_params(
+            f_params=params_path, f_optimizer=opt_path, f_history=hist_path
+        )
+
+        instance_dict = {}
+        for key, value in self.__dict__.items():
+            if key != "net":
+                instance_dict[key] = value
+
+        with open(instance_path, 'wb') as f:
+            pickle.dump(instance_dict, f)
+
+    @staticmethod
+    def load(filename):
+        """Method to load serialized Neural Network"""
+        path = os.path.join(SAVE_PATH, filename)
+        os.makedirs(path, exist_ok=True)
+
+        instance_path = os.path.join(path, 'instance.pkl')
+        params_path = os.path.join(path, 'model.pkl')
+        opt_path = os.path.join(path, 'opt.pkl')
+        hist_path = os.path.join(path, 'history.json')
+
+        with open(instance_path, 'rb') as f:
+            instance_dict = pickle.load(f)
+        q_nn = QuantNN(**instance_dict)
+        q_nn.net.initialize()
+        q_nn.net.load_params(
+            f_params=params_path, f_optimizer=opt_path, f_history=hist_path
+        )
+        return q_nn

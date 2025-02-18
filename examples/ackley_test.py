@@ -14,7 +14,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 # from UBAS.estimators.k_fold_quantile_regressor import KFoldQuantileRegressor
 from copy import deepcopy
 
-n_sampling_iterations = 10
+n_sampling_iterations = 1
 n_batch_points = 60
 n_initial_points = 300
 dimension = 2
@@ -80,6 +80,13 @@ for i in range(n_sampling_iterations):
 # Fit uniform and adaptive surrogates
 u_nn.fit(u_x, u_y)
 a_nn.fit(a_x, a_y)
+
+print("Saving Neural Networks")
+u_nn.save("ackley_test/u_nn")
+a_nn.save("ackley_test/a_nn")
+print("Loading Neural Networks")
+u_nn = QuantNN.load("ackley_test/u_nn")
+a_nn = QuantNN.load("ackley_test/a_nn")
 
 # Plot results on a scatter plot
 fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 8))
