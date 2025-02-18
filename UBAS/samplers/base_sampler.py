@@ -11,7 +11,7 @@ from numpy.typing import NDArray
 class BaseSampler:
     """Base class for data samplers."""
 
-    def __init__(self, bounds, ndim, batch_samples=1):
+    def __init__(self, bounds, ndim):
         """
         Class Initialization
 
@@ -23,8 +23,6 @@ class BaseSampler:
             bounds for each dimension.
         ndim : int
             The number of dimensions (inputs) of the problem to be sampled
-        batch_samples : int, default=1
-            The number of additional samples to return in one call of `sample`
 
         Raises
         -------
@@ -44,13 +42,12 @@ class BaseSampler:
 
         self.ndim = ndim
         self.bounds = bounds
-        self.batch_samples = batch_samples
 
         # Define transformation variables for transforming range of [0, 1) to the desired bounds
         self._scaling_factor = bounds[1]-bounds[0]
-        self._additive_factor = np.ones((batch_samples, ndim)) * bounds[0]
+        self._additive_factor = bounds[0]
 
-    def uniformly_sample(self) -> NDArray:
+    def uniformly_sample(self, batch_samples=1) -> NDArray:
         """
         Generates uniform samples within the bounds given in class initialization
 
@@ -59,13 +56,15 @@ class BaseSampler:
         new_x : NDArray
             The new locations of training data which should augment the current training set of
             shape (`batch_samples`, n_dimensions)
+        batch_samples : int, default=1
+            The number of samples to generate with one function call.
         """
-
         rng = np.random.default_rng()
-        new_x = rng.random((self.batch_samples, self.ndim)) * self._scaling_factor + self._additive_factor
+        new_x = rng.random((batch_samples, self.ndim)) * self._scaling_factor + \
+                np.ones((batch_samples, self.ndim)) * self._additive_factor
         return new_x
 
-    def adaptively_mc_sample(self, x_candidates, p, bin_width=None) -> NDArray:
+    def adaptively_mc_sample(self, x_candidates, p, batch_samples=1, bin_width=None, ) -> NDArray:
         """
         Generates adaptive samples within the bounds given in class initialization using
         a Monte Carlo sampled probability distribution
@@ -78,6 +77,8 @@ class BaseSampler:
         p : NDArray
             Samples of the probability distribution from which to generate new x values
             Should be of shape (n_samples)
+        batch_samples : int, default=1
+            The number of samples to generate with one function call.
         bin_width : Union(float, NDArray, NoneType) default=None
             The side length of the square around each x_candidate that samples are chosen from if x_candidate is drawn
             from `p`. If a float is passed, the bin width is assumed to be constant for each dimension. If an NDArray
@@ -129,7 +130,7 @@ class BaseSampler:
             bin_width = np.ones(self.ndim) * bin_width
 
         # Choose indices from probability distribution
-        new_x_indices = rng.choice(p.shape[0], self.batch_samples, p=p, replace=rep)
+        new_x_indices = rng.choice(p.shape[0], batch_samples, p=p, replace=rep)
         chosen_candidates = x_candidates[new_x_indices]
 
         dx = bin_width / 2

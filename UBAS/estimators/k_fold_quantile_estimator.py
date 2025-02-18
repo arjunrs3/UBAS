@@ -1,5 +1,5 @@
 """
-k_fold_quantile_regressor.py
+k_fold_quantile_estimator.py
 =====================================================
 A wrapper for any estimator with scikit-learn API(i.e. with ``fit`` and ``predict`` methods)
 which uses Quantile Regression with K-Fold CV+ or CV-minmax to return locally adaptive, statistically
