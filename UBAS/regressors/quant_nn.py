@@ -88,7 +88,7 @@ class QuantNN(BaseEstimator, RegressorMixin):
         """Predict method to conform to scikit-api"""
         if isinstance(X, np.ndarray):
             X = torch.tensor(X, dtype=torch.float32)
-        return self.net.predict(X).T
+        return self.net.predict(X)
 
     def save(self, filename):
         """Method to serialize the Neural Network"""

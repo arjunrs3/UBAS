@@ -1,44 +1,55 @@
 """
 adaptive_sampler.py
-===============================
-A sampler which adaptively chooses samples between the provided bounds from a given probability distribution
+===================
+Subclass of `BaseSampler`, and is a base class for all types of adaptive samplers.
+The important change is the reimplementation of the sample_step() function which determines how new points are
+generated.
 """
 import numpy as np
-from numpy.typing import NDArray
 from UBAS.samplers.base_sampler import BaseSampler
-
+from numpy.typing import NDArray
+import pandas as pd
+import matplotlib.pyplot as plt
 
 class AdaptiveSampler(BaseSampler):
-    """Class which adaptively generates samples within given bounds using a provided probability distribution"""
-    def __init__(self):
-        pass
-
-    def sample(self, bounds, batch_samples=1, *args, **kwargs) -> NDArray:
+    """Adaptive Sampling Parent Class"""
+    def __init__(self, dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
+                 initial_inputs, initial_targets, test_inputs=None, test_targets=None, intermediate_training=False,
+                 plotting_interval=5, save_interval=5, mean_relative_error=False, n_p_samples=10000):
         """
+        Class Initialization. Check BaseSampler documentation for parameter descriptions
 
         Parameters
         ----------
-        bounds : NDArray
-            The bounds within which to sample. Should be an NDArray of shape (2, n_dimensions) where
-            the first element of the 0th axis are the lower bounds and the second element are the upper
-            bounds for each dimension.
-        batch_samples : int, default=1
-            The number of additional samples to return in one call of `sample`
-        **args
-            Additional arguments should be passed as keyword arguments
-        **kwargs
-            Additional keyword arguments are ignored for `UniformSampler`
+        n_p_samples : int default=10000
+            The number of samples uniformly generated within the bounds to approximate the probability distribution
+            from which samples are drawn.
+        """
+        super().__init__(dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
+                         initial_inputs, initial_targets, test_inputs, test_targets,
+                         intermediate_training, plotting_interval, save_interval, mean_relative_error)
+        self.n_p_samples = n_p_samples
+
+    def sampling_step(self, n_batch_points) -> NDArray:
+        """
+        Override of sampling_step method in BaseSampler which uses the surrogate to predict `n_p_samples` values
+        and draw from the PMF proportional to their widths.
+
+        Parameters
+        ----------
+        n_batch_points : int
+            The number of points to sample in one call of sampling_step
 
         Returns
         -------
         new_x : NDArray
-            The new locations of training data which should augment the current training set of
-            shape (`batch_samples`, n_dimensions)
+            The new adaptively sampled inputs
         """
-        n_dimensions = bounds.shape[1]
+        probability_eval_points = self.sampler.uniformly_sample(self.n_p_samples)
+        p_preds, p_bounds = self.predict(probability_eval_points)
+        widths = p_bounds[:, 1] - p_bounds[:, 0]
+        p = np.where(widths < 0, 0, widths)
+        p = p ** 4 / np.sum(p ** 4)
 
-        rng = np.random.default_rng()
-        new_x_unscaled = rng.random((batch_samples, n_dimensions))
-        new_x = new_x_unscaled * (bounds[1] - bounds[0]) + np.ones((batch_samples, n_dimensions)) * bounds[0]
-
+        new_x = self.sampler.adaptively_mc_sample(probability_eval_points, p, n_batch_points)
         return new_x

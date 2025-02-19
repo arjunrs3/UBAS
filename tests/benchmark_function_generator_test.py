@@ -1,6 +1,6 @@
 import numpy as np
 import unittest
-from examples.generators.benchmark_function_generator import BenchmarkFunctionGenerator
+from UBAS.generators.benchmark_function_generator import BenchmarkFunctionGenerator
 
 
 class TestBenchmarkFunctionGenerator(unittest.TestCase):

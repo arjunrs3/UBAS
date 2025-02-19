@@ -1,147 +1,196 @@
 """
 base_sampler.py
-==============================
-Base class for data samplers; functions which use either uniform or adaptive sampling to sample new points within
-given bounds
+==================
+Parent class for all samplers: functions which sample from data generators, typically for the purpose of constructing
+a surrogate model
 """
-import numpy as np
+from typing import Tuple
 from numpy.typing import NDArray
+import numpy as np
+from rich.progress import track
+from UBAS.generators.input_generator import InputGenerator
+from UBAS.utils.evaluation import evaluate_performance
 
 
 class BaseSampler:
-    """Base class for data samplers."""
-
-    def __init__(self, bounds, ndim):
+    """Base class for data samplers that samples uniformly within the given bounds"""
+    def __init__(self, dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
+                 initial_inputs, initial_targets, test_inputs=None, test_targets=None, intermediate_training=False,
+                 plotting_interval=5, save_interval=5, mean_relative_error=False):
         """
-        Class Initialization
+        Sampler Initialization
 
         Parameters
         ----------
+        dimension : int
+            Dimension of the problem
+        surrogate : Object
+            A surrogate model which predicts confidence intervals with the scikit-learn 'fit' and 'predict' API
+        generator : BaseGenerator
+            A generator model that generates target values from the inputs
         bounds : NDArray
             The bounds within which to sample. Should be an NDArray of shape (2, n_dimensions) where
             the first element of the 0th axis are the lower bounds and the second element are the upper
             bounds for each dimension.
-        ndim : int
-            The number of dimensions (inputs) of the problem to be sampled
-
-        Raises
-        -------
-        ValueError
-            If the shape of bounds is not (2, ndim)
-        ValueError
-            If any of the lower bounds (first index of bounds) are larger than any of the upper bounds (second index)
+        n_iterations : int
+            Number of sampling iterations to perform
+        n_batch_points : int
+            Number of points to add to the training set per sampling iteration
+        initial_inputs : NDArray
+            Starting inputs, should be of shape (n_initial_samples, dimension)
+        initial_targets : NDArray
+            Initial targets, should be of shape (n_initial_samples, )
+        test_inputs : NDArray default=None
+            Inputs of a validation set to test the surrogate model against. If not provided, no evaluation will occur
+            Should be of shape (n_test_samples, dimension)
+        test_targets : NDArray default=None
+            Targets of a validation set to test the surrogate model against. If not provided, no evaluation will occur
+            Should be of shape (n_test_samples, )
+        intermediate_training : Bool default=False
+            If True, the surrogate model will be retrained after every sampling iteration. If False, the surrogate
+            model gets trained once at the end of sampling
+        plotting_interval : int default=5
+            Not yet implemented
+        save_interval : int default=5
+            Not yet implemented
+        mean_relative_error : Bool, default=False
+            If True, mean relative error metrics will be computed (as long as test_inputs and test_targets are
+            provided). If false, the mean relative error will be none in the error evaluation objects.
         """
-        if bounds.shape != (2, ndim):
-            raise ValueError(f"""The detected shape of bounds was {bounds.shape}; it is required that bounds has a
-            shape of (2, ndim). The format of bounds is:
-            NDArray([[lower_bounds for each dimension], [upper bounds for each dimension]]).""")
-        if any(bounds[1] - bounds[0] <= 0):
-            raise ValueError(f"""The lower bounds must be strictly smaller than the upper bounds. The lower bounds were: 
-            {bounds[0]}, while the upper bounds were {bounds[1]}. The format of bounds is: 
-            NDArray([[lower_bounds for each dimension], [upper bounds for each dimension]]).""")
-
-        self.ndim = ndim
+        self.dimension = dimension
+        self.surrogate = surrogate
+        self.generator = generator
         self.bounds = bounds
+        self.n_iterations = n_iterations
+        self.n_batch_points = n_batch_points
+        self.initial_inputs = initial_inputs
+        self.initial_targets = initial_targets
+        self.n_initial_points = self.initial_inputs.shape[0]
+        self.test_inputs = test_inputs
+        self.test_targets = test_targets
+        self.intermediate_training = intermediate_training
+        self.plotting_interval = plotting_interval
+        self.save_interval = save_interval
+        self.mean_relative_error = mean_relative_error
 
-        # Define transformation variables for transforming range of [0, 1) to the desired bounds
-        self._scaling_factor = bounds[1]-bounds[0]
-        self._additive_factor = bounds[0]
+        # Initialize sampler
+        self.sampler = InputGenerator(bounds, dimension)
 
-    def uniformly_sample(self, batch_samples=1) -> NDArray:
+        # Allocate arrays
+        x_exact = np.zeros((self.n_iterations * self.n_batch_points + self.n_initial_points, self.dimension))
+        y_exact = np.zeros(x_exact.shape[0])
+
+        if intermediate_training is True:
+            self.model_performance = np.empty(self.n_iterations + 1, dtype=object)
+        else:
+            self.model_performance = np.empty(1, dtype=object)
+
+        # Populate arrays with initial values
+        x_exact[:self.n_initial_points] = self.initial_inputs
+        y_exact[:self.n_initial_points] = self.initial_targets
+
+        # Create instance variables with the exact arrays:
+        self.x_exact = x_exact
+        self.y_exact = y_exact
+
+        # Perform checks on test_inputs and test_targets and set evaluation flag accordingly
+        if test_inputs is not None:
+            self.evaluate_surrogates = True
+        else:
+            self.evaluate_surrogates = False
+
+    def sample(self, filename, *args, **fit_kwargs):
         """
-        Generates uniform samples within the bounds given in class initialization
-
-        Returns
-        -------
-        new_x : NDArray
-            The new locations of training data which should augment the current training set of
-            shape (`batch_samples`, n_dimensions)
-        batch_samples : int, default=1
-            The number of samples to generate with one function call.
-        """
-        rng = np.random.default_rng()
-        new_x = rng.random((batch_samples, self.ndim)) * self._scaling_factor + \
-                np.ones((batch_samples, self.ndim)) * self._additive_factor
-        return new_x
-
-    def adaptively_mc_sample(self, x_candidates, p, batch_samples=1, bin_width=None, ) -> NDArray:
-        """
-        Generates adaptive samples within the bounds given in class initialization using
-        a Monte Carlo sampled probability distribution
+        Method to perform iterations of sample_step while handling re-training and evaluation the surrogate. Usually
+        does not need to be overriden in subclasses.
 
         Parameters
         ----------
-        x_candidates : NDArray
-            Locations which are used to sample the probability distribution, `p`
-            Should be of shape ((n_samples, ndim))
-        p : NDArray
-            Samples of the probability distribution from which to generate new x values
-            Should be of shape (n_samples)
-        batch_samples : int, default=1
-            The number of samples to generate with one function call.
-        bin_width : Union(float, NDArray, NoneType) default=None
-            The side length of the square around each x_candidate that samples are chosen from if x_candidate is drawn
-            from `p`. If a float is passed, the bin width is assumed to be constant for each dimension. If an NDArray
-            of shape (n_dim) is passed, it is interpreted as the bin widths for each dimension.
-            If none, the number of bins per dimension is calculated by taking the number of bins per dimension to the
-            power of the inverse of the number of dimensions. This assumes a gridlike distribution.
+        filename : str
+            Not yet Implemented
+        *args
+            Extra arguments to the surrogate model fit method should be passed as keyword arguments
+        **fit_kwargs
+            Extra keyword arguments are passed to the fit method of the surrogate model.
+        """
+        n_iterations = self.n_iterations
+        n_initial_points = self.n_initial_points
+        n_batch_points = self.n_batch_points
+
+        # Run sampling loop:
+        for i in track(range(n_iterations), description="Running Main Sampling Loop"):
+            start_index = n_initial_points + i * n_batch_points
+
+            # Re-train surrogate
+            if self.intermediate_training is True:
+                self.surrogate.fit(self.x_exact[:start_index], self.y_exact[:start_index], **fit_kwargs)
+
+                # if test data is available, evaluate the surrogate
+                if self.evaluate_surrogates is True:
+                    y_preds, y_bounds = self.predict(self.test_inputs)
+                    eval_obj = evaluate_performance(y_preds, y_bounds, self.test_targets, self.mean_relative_error)
+                    self.model_performance[i] = eval_obj
+
+            # Sample new points with sampling_step
+            new_x = self.sampling_step(n_batch_points)
+            new_x, new_y = self.generator.generate(new_x)
+            self.x_exact[start_index:start_index+n_batch_points] = new_x
+            self.y_exact[start_index:start_index+n_batch_points] = new_y
+
+        # Re-train surrogate on full training data
+        self.surrogate.fit(self.x_exact, self.y_exact, **fit_kwargs)
+
+        # Re-evaluate_surrogate on full training data
+        if self.evaluate_surrogates is True:
+            y_preds, y_bounds = self.predict(self.test_inputs)
+            eval_obj = evaluate_performance(y_preds, y_bounds, self.test_targets, self.mean_relative_error)
+            if self.intermediate_training is True:
+                self.model_performance[n_iterations] = eval_obj
+            else:
+                self.model_performance[0] = eval_obj
+
+        print("Sampling has finished")
+
+    def sampling_step(self, n_batch_points) -> NDArray:
+        """
+        One step of uniform sampling. This is usually overriden by subclasses
+
+        Parameters
+        ----------
+        n_batch_points
+            The number of points to sample with one call to sampling_step
 
         Returns
         -------
-        new_x : NDArray
-            The new locations of training data which should augment the current training set of
-            shape (`batch_samples`, n_dimensions)
-
-        Raises
-        -------
-        ValueError
-            If the shape of x_candidates is inconsistent with the number of dimensions
-        ValueError
-            If x_candidates and p do not have the same length
-        ValueError
-            If `bin_width` is an NDArray which does not have shape (n_dim)
+        NDArray
+            A set of new training points of shape (n_batch_points, dimension)
         """
-
-        if x_candidates.shape[1] != self.ndim:
-            raise ValueError(f"""Shape of x_candidates was found to be inconsistent with the number of dimensions 
-                             the detected shape was {x_candidates.shape}, implying a dimension of 
-                             {x_candidates.shape[1]}, while the number of dimensions is {self.ndim} 
-                             please either change sampler.ndim or reshape x_candidates""")
-
-        if p.shape[0] != (x_candidates.shape[0]):
-            raise ValueError(f"""Length of probability distribution, `p` inconsistent with number of samples in 
-                             x_candidates. The length of `p` is {p.shape[0]}, while the shape of x_candidates is 
-                             {x_candidates.shape}""")
-
-        if isinstance(bin_width, np.ndarray) and bin_width.shape[0] != self.ndim:
-            raise ValueError(f"""Bin width was passed as an array, but its length does not match `ndim`. The detected 
-                             shape was {bin_width.shape}""")
-
-        rng = np.random.default_rng()
-
-        # If bin width is none, calculate it assuming a grid_like distribution:
-        if bin_width is None:
-            bin_width = self._scaling_factor / (x_candidates.shape[1] ** (1/self.ndim))
-
-        # If bin width is zero, sample without replacement
-        rep = False if all(bin_width) == 0 else True
-
-        if isinstance(bin_width, np.ndarray) is False:
-            bin_width = np.ones(self.ndim) * bin_width
-
-        # Choose indices from probability distribution
-        new_x_indices = rng.choice(p.shape[0], batch_samples, p=p, replace=rep)
-        chosen_candidates = x_candidates[new_x_indices]
-
-        dx = bin_width / 2
-        deviation = rng.uniform(-1, 1, chosen_candidates.shape) * dx
-        new_x = chosen_candidates + deviation
-
-        # if any of the x-values are outside the bounds, set their value to the bound
-        lb_comparison = self.bounds[0] * np.ones_like(new_x)
-        ub_comparison = self.bounds[1] * np.ones_like(new_x)
-
-        new_x = np.maximum(lb_comparison, new_x)
-        new_x = np.minimum(ub_comparison, new_x)
-
+        new_x = self.sampler.uniformly_sample(n_batch_points)
         return new_x
+
+    def predict(self, inputs):
+        """
+        A helper method to transform different types of predictions arising from surrogate models into a usable form.
+
+        Parameters
+        ----------
+        inputs : NDArray
+            Inputs for which to predict values
+
+        Returns
+        -------
+        Y_preds : NDArray
+            Array of shape (length of inputs, )
+            The mean predictions of the surrogate model
+
+        Y_bounds : NDArray
+            Array of shape (length of inputs, 2)
+            The lower and upper bound predictions of the surrogate model.
+        """
+        pred_results = self.surrogate.predict(inputs)
+        if isinstance(pred_results, Tuple):
+            y_preds, y_bounds = Tuple
+        else:
+            y_bounds = pred_results
+            y_preds = np.mean(pred_results, axis=1)
+        return y_preds, y_bounds
