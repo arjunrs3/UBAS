@@ -33,7 +33,7 @@ def sample_central_peak(dimension, n_iterations, n_batch_points, n_initial_point
 
     u_plotter = BasePlotter(os.path.join(base_folder, "Uniform"), plotting_interval=1,
                             plots=["scatter_matrix", "pred_vs_actual"],
-                            input_names=["X" + str(j) for j in range(dimension)], target_name="Y", save_type="png")
+                            input_names=["X" + str(j+1) for j in range(dimension)], target_name="Y", save_type="png")
 
     a_plotter = deepcopy(u_plotter)
     a_plotter.filename = os.path.join(base_folder, "Adaptive")
@@ -71,4 +71,4 @@ def sample_central_peak(dimension, n_iterations, n_batch_points, n_initial_point
 
 
 if __name__ == "__main__":
-    sample_central_peak(dimension=4, n_iterations=15, n_batch_points=30, n_initial_points=100, n_test_points=1000)
+    sample_central_peak(dimension=3, n_iterations=15, n_batch_points=30, n_initial_points=100, n_test_points=1000)

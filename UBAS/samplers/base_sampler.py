@@ -141,7 +141,7 @@ class BaseSampler:
                 if (i + 1) % self.plotter.plotting_interval == 0:
                     y_preds, y_bounds = self.predict(self.x_exact[:start_index+n_batch_points])
                     self.plotter.generate_plots(i+1, self.x_exact[:start_index+n_batch_points], new_x, y_preds,
-                                                self.y_exact[:start_index+n_batch_points], new_y)
+                                                y_bounds, self.y_exact[:start_index+n_batch_points], new_y)
 
         # Re-train surrogate on full training data
         self.surrogate.fit(self.x_exact, self.y_exact, **fit_kwargs)
