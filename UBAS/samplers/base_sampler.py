@@ -11,12 +11,11 @@ from rich.progress import track
 from UBAS.generators.input_generator import InputGenerator
 from UBAS.utils.evaluation import evaluate_performance
 
-
 class BaseSampler:
     """Base class for data samplers that samples uniformly within the given bounds"""
     def __init__(self, dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
                  initial_inputs, initial_targets, test_inputs=None, test_targets=None, intermediate_training=False,
-                 plotting_interval=5, save_interval=5, mean_relative_error=False):
+                 plotter=None, save_interval=5, mean_relative_error=False):
         """
         Sampler Initialization
 
@@ -49,7 +48,7 @@ class BaseSampler:
         intermediate_training : Bool default=False
             If True, the surrogate model will be retrained after every sampling iteration. If False, the surrogate
             model gets trained once at the end of sampling
-        plotting_interval : int default=5
+        plotter : Plotter default=None
             Not yet implemented
         save_interval : int default=5
             Not yet implemented
@@ -69,7 +68,7 @@ class BaseSampler:
         self.test_inputs = test_inputs
         self.test_targets = test_targets
         self.intermediate_training = intermediate_training
-        self.plotting_interval = plotting_interval
+        self.plotter = plotter
         self.save_interval = save_interval
         self.mean_relative_error = mean_relative_error
 
@@ -136,6 +135,13 @@ class BaseSampler:
             new_x, new_y = self.generator.generate(new_x)
             self.x_exact[start_index:start_index+n_batch_points] = new_x
             self.y_exact[start_index:start_index+n_batch_points] = new_y
+
+            # Plot data
+            if self.plotter is not None:
+                if (i + 1) % self.plotter.plotting_interval == 0:
+                    y_preds, y_bounds = self.predict(self.x_exact[:start_index+n_batch_points])
+                    self.plotter.generate_plots(i+1, self.x_exact[:start_index+n_batch_points], new_x, y_preds,
+                                                self.y_exact[:start_index+n_batch_points], new_y)
 
         # Re-train surrogate on full training data
         self.surrogate.fit(self.x_exact, self.y_exact, **fit_kwargs)

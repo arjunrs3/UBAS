@@ -8,9 +8,11 @@ from UBAS.generators.central_peak_generator import CentralPeakGenerator
 from UBAS.samplers.base_sampler import BaseSampler
 from UBAS.regressors.quant_nn import QuantNN
 from UBAS.generators.input_generator import InputGenerator
+from UBAS.plotters.base_plotter import BasePlotter
 from UBAS.samplers.adaptive_sampler import AdaptiveSampler
 from copy import deepcopy
 import matplotlib.pyplot as plt
+import os
 
 
 def sample_central_peak(dimension, n_iterations, n_batch_points, n_initial_points, n_test_points):
@@ -27,6 +29,15 @@ def sample_central_peak(dimension, n_iterations, n_batch_points, n_initial_point
     initial_inputs, initial_targets = generator.generate(initial_point_sampler.uniformly_sample(n_initial_points))
     test_inputs, test_targets = generator.generate(test_point_sampler.uniformly_sample(n_test_points))
 
+    base_folder = str(dimension) + "D_central_peak"
+
+    u_plotter = BasePlotter(os.path.join(base_folder, "Uniform"), plotting_interval=1,
+                            plots=["scatter_matrix", "pred_vs_actual"],
+                            input_names=["X" + str(j) for j in range(dimension)], target_name="Y", save_type="png")
+
+    a_plotter = deepcopy(u_plotter)
+    a_plotter.filename = os.path.join(base_folder, "Adaptive")
+
     # Initialize the uniform sampler
     u_surrogate = QuantNN(input_dim=dimension, output_dim=2, hidden_dim=64, num_layers=6,
                           quantiles=np.array([0.2, 0.8]), max_epochs=500, batch_size=500)
@@ -35,11 +46,11 @@ def sample_central_peak(dimension, n_iterations, n_batch_points, n_initial_point
 
     u_sampler = BaseSampler(dimension, u_surrogate, generator, sampling_bounds, n_iterations, n_batch_points,
                             initial_inputs, initial_targets, test_inputs, test_targets, intermediate_training=True,
-                            mean_relative_error=True)
+                            plotter=u_plotter, mean_relative_error=True)
 
     a_sampler = AdaptiveSampler(dimension, a_surrogate, generator, sampling_bounds, n_iterations, n_batch_points,
                             initial_inputs, initial_targets, test_inputs, test_targets, intermediate_training=True,
-                            mean_relative_error=True, n_p_samples=10000)
+                            plotter=a_plotter, mean_relative_error=True, n_p_samples=10000)
 
     # Perform sampling
     u_sampler.sample(filename="central_peak_test_uniform")
@@ -60,4 +71,4 @@ def sample_central_peak(dimension, n_iterations, n_batch_points, n_initial_point
 
 
 if __name__ == "__main__":
-    sample_central_peak(dimension=2, n_iterations=15, n_batch_points=30, n_initial_points=100, n_test_points=1000)
+    sample_central_peak(dimension=4, n_iterations=15, n_batch_points=30, n_initial_points=100, n_test_points=1000)

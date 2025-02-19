@@ -15,7 +15,7 @@ class AdaptiveSampler(BaseSampler):
     """Adaptive Sampling Parent Class"""
     def __init__(self, dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
                  initial_inputs, initial_targets, test_inputs=None, test_targets=None, intermediate_training=False,
-                 plotting_interval=5, save_interval=5, mean_relative_error=False, n_p_samples=10000):
+                 plotter=None, save_interval=5, mean_relative_error=False, n_p_samples=10000):
         """
         Class Initialization. Check BaseSampler documentation for parameter descriptions
 
@@ -27,7 +27,7 @@ class AdaptiveSampler(BaseSampler):
         """
         super().__init__(dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
                          initial_inputs, initial_targets, test_inputs, test_targets,
-                         intermediate_training, plotting_interval, save_interval, mean_relative_error)
+                         intermediate_training, plotter, save_interval, mean_relative_error)
         self.n_p_samples = n_p_samples
 
     def sampling_step(self, n_batch_points) -> NDArray:
