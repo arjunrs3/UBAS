@@ -6,13 +6,13 @@ A simple regressor class which defines a neural net quantile regressor using sko
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 import numpy as np
 from skorch import NeuralNetRegressor
-from skorch.callbacks import ProgressBar
+from skorch.callbacks import ProgressBar, LRScheduler
 from sklearn.base import BaseEstimator, RegressorMixin
 import pickle
 import os
-from ..regressors import SAVE_PATH
 
 
 class QuantileLoss(nn.Module):
@@ -32,6 +32,7 @@ class MLP(nn.Module):
         super().__init__()
         layers = [nn.Linear(input_dim, hidden_dim)]
         for i in range(num_layers-1):
+            layers.append(nn.BatchNorm1d(hidden_dim))
             layers.append(nn.ReLU())
             layers.append(nn.Linear(hidden_dim, hidden_dim))
         layers.append(nn.ReLU())
@@ -44,9 +45,8 @@ class MLP(nn.Module):
 
 class QuantNN(BaseEstimator, RegressorMixin):
     """A Neural Network which can perform quantile regression"""
-    def __init__(self, input_dim, hidden_dim=64, output_dim=1, num_layers=3, quantiles=np.array([0.05, 0.95]), lr=0.001,
-                 max_epochs=500, batch_size=32,
-                 patience=10):
+    def __init__(self, input_dim, hidden_dim=64, output_dim=1, num_layers=3, quantiles=np.array([0.05, 0.95]), lr=0.01,
+                 max_epochs=500, batch_size=32, patience=10):
         self.input_dim = input_dim
         self.hidden_dim = hidden_dim
         self.output_dim = output_dim
@@ -71,7 +71,8 @@ class QuantNN(BaseEstimator, RegressorMixin):
             batch_size=self.batch_size,
             iterator_train__shuffle=True,
             train_split=None,
-            callbacks=[ProgressBar()]
+            callbacks=[ProgressBar(),
+                       LRScheduler(policy=ReduceLROnPlateau, factor=0.2, min_lr=1e-5, patience=50)]
         )
 
     def fit(self, X, y):
@@ -92,7 +93,7 @@ class QuantNN(BaseEstimator, RegressorMixin):
 
     def save(self, filename):
         """Method to serialize the Neural Network"""
-        path = os.path.join(SAVE_PATH, filename)
+        path = os.path.join(filename)
         os.makedirs(path, exist_ok=True)
 
         instance_path = os.path.join(path, 'instance.pkl')
@@ -115,7 +116,7 @@ class QuantNN(BaseEstimator, RegressorMixin):
     @staticmethod
     def load(filename):
         """Method to load serialized Neural Network"""
-        path = os.path.join(SAVE_PATH, filename)
+        path = os.path.join(filename)
         os.makedirs(path, exist_ok=True)
 
         instance_path = os.path.join(path, 'instance.pkl')
