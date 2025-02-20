@@ -10,7 +10,9 @@ from UBAS.regressors.quant_nn import QuantNN
 from UBAS.generators.input_generator import InputGenerator
 from UBAS.plotters.base_plotter import BasePlotter
 from UBAS.samplers.adaptive_sampler import AdaptiveSampler
+from UBAS.estimators.k_fold_quantile_estimator import KFoldQuantileRegressor
 from copy import deepcopy
+from sklearn.model_selection import KFold
 import matplotlib.pyplot as plt
 import os
 
@@ -18,6 +20,7 @@ import os
 def sample_central_peak(dimension, n_iterations, n_batch_points, n_initial_points, n_test_points):
     """Sampling of the central peak function"""
 
+    alpha = 0.2
     # Problem setup and initial point generation
     sampling_bounds = (np.ones((2, dimension)) * np.array([[-1, 1]]).T)
     test_bounds = (np.ones((2, dimension)) * np.array([[-0.1, 0.1]]).T)
@@ -38,8 +41,10 @@ def sample_central_peak(dimension, n_iterations, n_batch_points, n_initial_point
     a_plotter = deepcopy(u_plotter)
 
     # Initialize the uniform sampler
-    u_surrogate = QuantNN(input_dim=dimension, output_dim=2, hidden_dim=64, num_layers=6,
-                          quantiles=np.array([0.2, 0.8]), max_epochs=300, batch_size=500)
+    u_nn = QuantNN(input_dim=dimension, output_dim=2, hidden_dim=64, num_layers=6,
+                          quantiles=np.array([alpha / 2, 1 - alpha / 2]), max_epochs=350, batch_size=500)
+
+    u_surrogate = KFoldQuantileRegressor(u_nn, method="plus", cv=KFold(n_splits=5, shuffle=True), alpha=alpha, n_jobs=7)
 
     a_surrogate = deepcopy(u_surrogate)
 
@@ -52,31 +57,25 @@ def sample_central_peak(dimension, n_iterations, n_batch_points, n_initial_point
 
     a_sampler = AdaptiveSampler(a_directory, dimension, a_surrogate, generator, sampling_bounds, n_iterations, n_batch_points,
                             initial_inputs, initial_targets, test_inputs, test_targets, intermediate_training=True,
-                            plotter=a_plotter, save_interval=5, mean_relative_error=True, n_p_samples=10000)
+                            plotter=a_plotter, save_interval=5, mean_relative_error=True, n_p_samples=1000000)
 
     # Perform sampling
-    u_sampler.sample()
+    u_sampler.sample(track_values=["mean_relative_error", "mean_width", "coverage"])
 
-    a_sampler.sample()
+    a_sampler.sample(track_values=["mean_relative_error", "mean_width", "coverage"])
     # plot mean_relative_error vs. number of samples
     mre_u = [perf.mean_relative_error for perf in u_sampler.model_performance]
     mre_a = [perf.mean_relative_error for perf in a_sampler.model_performance]
     n_samples = np.arange(n_iterations + 1) * n_batch_points + n_initial_points
 
-    #fig, ax = plt.subplots()
-    #ax.set_xlabel('Number of Samples')
-    #ax.set_ylabel('Mean Relative Error')
-    #ax.semilogy(n_samples, mre_u, linestyle='dashed', color='black', label='uniform')
-    #ax.semilogy(n_samples, mre_a, linestyle='solid', color='blue', label='adaptive')
-    #ax.legend()
-    #plt.show()
+    fig, ax = plt.subplots()
+    ax.set_xlabel('Number of Samples')
+    ax.set_ylabel('Mean Relative Error')
+    ax.semilogy(n_samples, mre_u, linestyle='dashed', color='black', label='uniform')
+    ax.semilogy(n_samples, mre_a, linestyle='solid', color='blue', label='adaptive')
+    ax.legend()
+    plt.show()
 
 
 if __name__ == "__main__":
-    sample_central_peak(dimension=2, n_iterations=20, n_batch_points=30, n_initial_points=100, n_test_points=1000)
-    sample_central_peak(dimension=3, n_iterations=20, n_batch_points=30, n_initial_points=100, n_test_points=1000)
-    sample_central_peak(dimension=4, n_iterations=20, n_batch_points=30, n_initial_points=100, n_test_points=1000)
-    sample_central_peak(dimension=5, n_iterations=20, n_batch_points=30, n_initial_points=100, n_test_points=1000)
-    sample_central_peak(dimension=6, n_iterations=20, n_batch_points=30, n_initial_points=100, n_test_points=1000)
-    sample_central_peak(dimension=7, n_iterations=20, n_batch_points=30, n_initial_points=100, n_test_points=1000)
-    sample_central_peak(dimension=8, n_iterations=20, n_batch_points=30, n_initial_points=100, n_test_points=1000)
+    sample_central_peak(dimension=10, n_iterations=20, n_batch_points=50, n_initial_points=400, n_test_points=1000)

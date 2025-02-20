@@ -71,6 +71,9 @@ data/
 # Plots
 plots/
 
+#Projects
+projects/
+
 # PyBuilder
 target/
 

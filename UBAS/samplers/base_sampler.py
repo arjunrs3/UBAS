@@ -4,7 +4,7 @@ base_sampler.py
 Parent class for all samplers: functions which sample from data generators, typically for the purpose of constructing
 a surrogate model
 """
-from typing import Tuple
+from typing import Tuple, Iterable
 from numpy.typing import NDArray
 import numpy as np
 from rich.progress import track
@@ -14,7 +14,8 @@ import os
 import pandas as pd
 from dataclasses import asdict
 import pickle
-
+import matplotlib.pyplot as plt
+import inspect
 
 class BaseSampler:
     """Base class for data samplers that samples uniformly within the given bounds"""
@@ -112,24 +113,60 @@ class BaseSampler:
         else:
             self.evaluate_surrogates = False
 
-    def sample(self, *args, **fit_kwargs):
+    def sample(self, track_values=["mean_width"], fit_kwargs=None, plot_kwargs=None, predict_kwargs=None):
         """
         Method to perform iterations of sample_step while handling re-training and evaluation the surrogate. Usually
         does not need to be overriden in subclasses.
 
         Parameters
         ----------
-        *args
-            Extra arguments to the surrogate model fit method should be passed as keyword arguments
-        **fit_kwargs
-            Extra keyword arguments are passed to the fit method of the surrogate model.
+        track_values : list
+            A list of error metrics to be plotted as the sampler selects new points. Currently supported values are:
+            mse, mean_relative_error, mean_width, max_width, max_absolute_error, coverage
+        fit_kwargs : dict
+            Extra keyword parameters to be passed to the fit method of the surrogate
+        plot_kwargs : dict
+            Extra keyword parameters to be passed to the plotting method
+        predict_kwargs : dict
+            Extra keyword parameters to be passed to the predictor
         """
         n_iterations = self.n_iterations
         n_initial_points = self.n_initial_points
         n_batch_points = self.n_batch_points
 
+        dynamic_plotting = False
+
+        if track_values is not None and track_values is not []:
+            dynamic_plotting = True
+            plt.ion()
+
+            fig, ax_tup = plt.subplots(len(track_values), 1, sharex=True)
+            plt.tight_layout()
+            if not isinstance(ax_tup, Iterable):
+                ax_tup = [ax_tup]
+            ax_tup[len(ax_tup)-1].set_xlabel("Number of Samples")
+            ax_tup[0].set_title("History: " + self.directory)
+            graph_objects = []
+            tracked_variables = {"n_samples": []}
+
+            for i, track_value in enumerate(track_values):
+                if track_value in ["mse", "mean_relative_error", "max_absolute_error"]:
+                    ax_tup[i].semilogy()
+                ax_tup[i].set_ylabel(track_value)
+                graph_objects.append(ax_tup[i].plot([0], [0])[0])
+                tracked_variables[track_value] = []
+
+        if fit_kwargs is None:
+            fit_kwargs = {}
+
+        if plot_kwargs is None:
+            plot_kwargs = {}
+
+        if predict_kwargs is None:
+            predict_kwargs = {}
+
         # Run sampling loop:
-        for i in track(range(n_iterations), description="Running Main Sampling Loop"):
+        for i in track(range(n_iterations), description=f"Running Main Sampling Loop: {self.directory}"):
             start_index = n_initial_points + i * n_batch_points
 
             # Re-train surrogate
@@ -138,11 +175,25 @@ class BaseSampler:
 
                 # if test data is available, evaluate the surrogate
                 if self.evaluate_surrogates is True:
-                    y_preds, y_bounds = self.predict(self.test_inputs)
+                    y_preds, y_bounds = self.predict(self.test_inputs, **predict_kwargs)
                     eval_obj = evaluate_performance(y_preds, y_bounds, self.test_targets, self.mean_relative_error)
                     self.model_performance[i] = eval_obj
                     if (i + 1) % self.save_interval == 0:
                         self.save_model_performance(self.model_performance[:i+1])
+
+                    if dynamic_plotting is True:
+                        tracked_variables["n_samples"].append(start_index)
+                        for j, track_value in enumerate(track_values):
+                            tracked_variables[track_value].append(asdict(self.model_performance[i])[track_value])
+                            graph_objects[j].set_xdata(tracked_variables["n_samples"])
+                            graph_objects[j].set_ydata(tracked_variables[track_value])
+
+                            ax_tup[j].relim()
+                            ax_tup[j].autoscale_view()
+                            plt.tight_layout()
+
+                            fig.canvas.draw()
+                            fig.canvas.flush_events()
 
             # Sample new points with sampling_step
             new_x = self.sampling_step(n_batch_points)
@@ -153,20 +204,26 @@ class BaseSampler:
             # Plot data
             if self.plotter is not None:
                 if (i + 1) % self.plotter.plotting_interval == 0:
-                    y_preds, y_bounds = self.predict(self.x_exact[:start_index+n_batch_points])
+                    y_preds, y_bounds = self.predict(self.x_exact[:start_index+n_batch_points], **predict_kwargs)
                     self.plotter.generate_plots(i+1, self.x_exact[:start_index+n_batch_points], new_x, y_preds,
-                                                y_bounds, self.y_exact[:start_index+n_batch_points], new_y)
+                                                y_bounds, self.y_exact[:start_index+n_batch_points], new_y,
+                                                **plot_kwargs)
 
             # Save Sampler State
             if (i + 1) % self.save_interval == 0:
                 self.save_sampler()
+        if dynamic_plotting:
+            plt.ioff()
+
+        print("Re-training surrogate on full training data...")
 
         # Re-train surrogate on full training data
         self.surrogate.fit(self.x_exact, self.y_exact, **fit_kwargs)
 
+        print("Evaluating surrogate on full training data...")
         # Re-evaluate_surrogate on full training data
         if self.evaluate_surrogates is True:
-            y_preds, y_bounds = self.predict(self.test_inputs)
+            y_preds, y_bounds = self.predict(self.test_inputs, **predict_kwargs)
             eval_obj = evaluate_performance(y_preds, y_bounds, self.test_targets, self.mean_relative_error)
             if self.intermediate_training is True:
                 self.model_performance[n_iterations] = eval_obj
@@ -174,6 +231,9 @@ class BaseSampler:
                 self.model_performance[0] = eval_obj
 
         # Save data:
+        print("Saving data...")
+        self.save_model_performance(self.model_performance)
+        self.save_sampler()
         print("Sampling has finished")
 
     def sampling_step(self, n_batch_points) -> NDArray:
@@ -193,7 +253,7 @@ class BaseSampler:
         new_x = self.sampler.uniformly_sample(n_batch_points)
         return new_x
 
-    def predict(self, inputs):
+    def predict(self, inputs, **kwargs):
         """
         A helper method to transform different types of predictions arising from surrogate models into a usable form.
 
@@ -201,6 +261,9 @@ class BaseSampler:
         ----------
         inputs : NDArray
             Inputs for which to predict values
+
+        **kwargs
+            Keyword arguments to the predict method of the surrogate
 
         Returns
         -------
@@ -212,9 +275,9 @@ class BaseSampler:
             Array of shape (length of inputs, 2)
             The lower and upper bound predictions of the surrogate model.
         """
-        pred_results = self.surrogate.predict(inputs)
+        pred_results = self.surrogate.predict(inputs, **kwargs)
         if isinstance(pred_results, Tuple):
-            y_preds, y_bounds = Tuple
+            y_preds, y_bounds = pred_results
         else:
             y_bounds = pred_results
             y_preds = np.mean(pred_results, axis=1)

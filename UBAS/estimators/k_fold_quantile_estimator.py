@@ -174,7 +174,7 @@ class KFoldQuantileRegressor(EnsembleEstimator):
             n_jobs: Optional[int] = 1,
             random_state: Optional[Union[int, np.random.RandomState]] = None,
             test_size: Optional[Union[int, float]] = None,
-            verbose: int = 1
+            verbose: int = 0
     ):
         self.estimator = estimator
         self.method = method
@@ -381,17 +381,16 @@ class KFoldQuantileRegressor(EnsembleEstimator):
             estimator_, X, test_index
         )
 
-        y = y.to_numpy().T[0]
         lower_slack = lq_predictions - y[[indices]][0]
         upper_slack = y[[indices]][0] - uq_predictions
-        model = estimator_.qrnn.model
+        #model = estimator_.qrnn.model
         # fig, ax = plt.subplots()
 
         # plt.scatter(X, y, color = 'blue')
         # plt.scatter(X.to_numpy()[[indices]], lq_predictions - interval_width, color = 'red')
         # plt.scatter(X.to_numpy()[[indices]], uq_predictions + interval_width, color = 'black')
         # plt.show()
-        return estimator_, lower_slack.flatten(), upper_slack.flatten(), model
+        return estimator_, lower_slack.flatten(), upper_slack.flatten()#, model
 
     def fit(
             self,
@@ -469,12 +468,12 @@ class KFoldQuantileRegressor(EnsembleEstimator):
             for train_index, test_index in cv.split(X, y, groups)
         )
 
-        estimators_, lower_slack, upper_slack, models = map(
+        estimators_, lower_slack, upper_slack = map(
             list, zip(*outputs)
         )
 
-        for i, model_less_estimator in enumerate(estimators_):
-            model_less_estimator.qrnn.model = models[i]
+        #for i, model_less_estimator in enumerate(estimators_):
+            #model_less_estimator.qrnn.model = models[i]
 
         self.estimators_ = estimators_
         lower_slack = np.concatenate(lower_slack).ravel()

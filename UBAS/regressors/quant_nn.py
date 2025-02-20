@@ -71,8 +71,8 @@ class QuantNN(BaseEstimator, RegressorMixin):
             batch_size=self.batch_size,
             iterator_train__shuffle=True,
             train_split=None,
-            callbacks=[ProgressBar(),
-                       LRScheduler(policy=ReduceLROnPlateau, factor=0.2, min_lr=1e-5, patience=50)]
+            callbacks=[LRScheduler(policy=ReduceLROnPlateau, factor=0.2, min_lr=1e-5, patience=50)],
+            verbose=False
         )
 
     def fit(self, X, y):
