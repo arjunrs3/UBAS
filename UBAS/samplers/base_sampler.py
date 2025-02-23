@@ -14,8 +14,7 @@ import os
 import pandas as pd
 from dataclasses import asdict
 import pickle
-import matplotlib.pyplot as plt
-import inspect
+from matplotlib import pyplot as plt
 
 class BaseSampler:
     """Base class for data samplers that samples uniformly within the given bounds"""
@@ -171,10 +170,12 @@ class BaseSampler:
 
             # Re-train surrogate
             if self.intermediate_training is True:
+                print("Training model...")
                 self.surrogate.fit(self.x_exact[:start_index], self.y_exact[:start_index], **fit_kwargs)
 
                 # if test data is available, evaluate the surrogate
                 if self.evaluate_surrogates is True:
+                    print("Evaluating model...")
                     y_preds, y_bounds = self.predict(self.test_inputs, **predict_kwargs)
                     eval_obj = evaluate_performance(y_preds, y_bounds, self.test_targets, self.mean_relative_error)
                     self.model_performance[i] = eval_obj
@@ -196,6 +197,7 @@ class BaseSampler:
                             fig.canvas.flush_events()
 
             # Sample new points with sampling_step
+            print("Generating new inputs...")
             new_x = self.sampling_step(n_batch_points)
             new_x, new_y = self.generator.generate(new_x)
             self.x_exact[start_index:start_index+n_batch_points] = new_x
@@ -203,6 +205,7 @@ class BaseSampler:
 
             # Plot data
             if self.plotter is not None:
+                print("Plotting Data...")
                 if (i + 1) % self.plotter.plotting_interval == 0:
                     y_preds, y_bounds = self.predict(self.x_exact[:start_index+n_batch_points], **predict_kwargs)
                     self.plotter.generate_plots(i+1, self.x_exact[:start_index+n_batch_points], new_x, y_preds,

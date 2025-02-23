@@ -13,13 +13,23 @@ from skorch.callbacks import ProgressBar, LRScheduler
 from sklearn.base import BaseEstimator, RegressorMixin
 import pickle
 import os
+import torch
 
+
+if torch.cuda.is_available():
+    device = torch.device('cuda')
+    print('CUDA is available. Using GPU.')
+    print('Device name:', torch.cuda.get_device_name(0))
+    print('Number of GPUs available:', torch.cuda.device_count())
+else:
+    device = torch.device('cpu')
+    print('CUDA is not available. Using CPU.')
 
 class QuantileLoss(nn.Module):
     """Tilted loss function for quantile regression"""
-    def __init__(self, quantiles):
+    def __init__(self, quantiles, device):
         super().__init__()
-        self.quantiles = torch.tensor(quantiles)
+        self.quantiles = torch.tensor(quantiles, device=device)
 
     def forward(self, y_pred, y_true):
         error = y_true.view(-1, 1) - y_pred
@@ -56,6 +66,7 @@ class QuantNN(BaseEstimator, RegressorMixin):
         self.max_epochs = max_epochs
         self.batch_size = batch_size
         self.patience = patience
+        self.device = 'cuda' if torch.cuda.is_available() else'cpu'
 
         self.net = NeuralNetRegressor(
             module=MLP,
@@ -65,6 +76,7 @@ class QuantNN(BaseEstimator, RegressorMixin):
             module__num_layers=self.num_layers,
             criterion=QuantileLoss,
             criterion__quantiles=self.quantiles,
+            criterion__device=self.device,
             optimizer=optim.Adam,
             optimizer__lr=self.lr,
             max_epochs=self.max_epochs,
@@ -72,23 +84,29 @@ class QuantNN(BaseEstimator, RegressorMixin):
             iterator_train__shuffle=True,
             train_split=None,
             callbacks=[LRScheduler(policy=ReduceLROnPlateau, factor=0.2, min_lr=1e-5, patience=50)],
-            verbose=False
+            verbose=True,
+            device=self.device
         )
 
     def fit(self, X, y):
         """Fit method to conform to scikit-api"""
         if isinstance(X, np.ndarray):
-            X = torch.tensor(X, dtype=torch.float32)
+            X = torch.tensor(X, dtype=torch.float32, device=self.device)
+        else:
+            X = QuantNN.to_device(X, self.device)
         if isinstance(y, np.ndarray):
-            y = torch.tensor(y, dtype=torch.float32)
-
+            y = torch.tensor(y, dtype=torch.float32, device=self.device)
+        else:
+            y = QuantNN.to_device(y, self.device)
         self.net.fit(X, y)
         return self
 
     def predict(self, X):
         """Predict method to conform to scikit-api"""
         if isinstance(X, np.ndarray):
-            X = torch.tensor(X, dtype=torch.float32)
+            X = torch.tensor(X, dtype=torch.float32, device=self.device)
+        else:
+            X = QuantNN.to_device(X, self.device)
         return self.net.predict(X)
 
     def save(self, filename):
@@ -132,3 +150,9 @@ class QuantNN(BaseEstimator, RegressorMixin):
             f_params=params_path, f_optimizer=opt_path, f_history=hist_path
         )
         return q_nn
+
+    @staticmethod
+    def to_device(tensor, device):
+        if tensor.device != device:
+            return tensor.to(device)
+        return tensor

@@ -15,7 +15,8 @@ class AdaptiveSampler(BaseSampler):
     """Adaptive Sampling Parent Class"""
     def __init__(self, directory, dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
                  initial_inputs, initial_targets, test_inputs=None, test_targets=None, intermediate_training=False,
-                 plotter=None, save_interval=5, mean_relative_error=False, n_p_samples=10000):
+                 plotter=None, save_interval=5, mean_relative_error=False, n_p_samples=10000, width_scaling='linear',
+                 exponent=1):
         """
         Class Initialization. Check BaseSampler documentation for parameter descriptions
 
@@ -24,11 +25,21 @@ class AdaptiveSampler(BaseSampler):
         n_p_samples : int default=10000
             The number of samples uniformly generated within the bounds to approximate the probability distribution
             from which samples are drawn.
+        width_scaling : str default='linear'
+            The method by which the widths are scaled before being transformed into a probability distribution
+            Currently supported values: 'linear', 'logistic'
+            If linear, an affine transformation is used to map the widths to the interval [0, 1]
+            If logistic, an affine transformation maps the widths to [-6, 6] and is then transformed
+                by the standard logistic function.
         """
         super().__init__(directory, dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
                          initial_inputs, initial_targets, test_inputs, test_targets,
                          intermediate_training, plotter, save_interval, mean_relative_error)
         self.n_p_samples = n_p_samples
+        supported_width_scaling = {"linear": AdaptiveSampler.scale_values_linear,
+                                   "logistic": AdaptiveSampler.scale_values_logistic}
+        self.width_scaling_method = supported_width_scaling[width_scaling]
+        self.exponent=exponent
 
     def sampling_step(self, n_batch_points) -> NDArray:
         """
@@ -46,10 +57,27 @@ class AdaptiveSampler(BaseSampler):
             The new adaptively sampled inputs
         """
         probability_eval_points = self.sampler.uniformly_sample(self.n_p_samples)
+        print("Sampling probability distribution...")
         p_preds, p_bounds = self.predict(probability_eval_points)
         widths = p_bounds[:, 1] - p_bounds[:, 0]
         p = np.where(widths < 0, 0, widths)
-        p = p ** 4 / np.sum(p ** 4)
+        p = self.width_scaling_method(p)
+        p =  p ** self.exponent / np.sum(p ** self.exponent)
 
         new_x = self.sampler.adaptively_mc_sample(probability_eval_points, p, n_batch_points)
         return new_x
+
+    @staticmethod
+    def scale_values_linear(values):
+        """Linear scaling of values to the interval [0, 1]"""
+        min_val = np.min(values)
+        max_val = np.max(values)
+        return (values - min_val) / (max_val - min_val)
+
+    @staticmethod
+    def scale_values_logistic(values):
+        """Logistic scaling of values to the interval (0, 1)"""
+        LOGISTIC_LB = -6
+        LOGISTIC_UB = 6
+        linear_values = AdaptiveSampler.scale_values_linear(values) * (LOGISTIC_UB - LOGISTIC_LB) + LOGISTIC_LB
+        return 1 / (1 + np.exp(-linear_values))

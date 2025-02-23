@@ -49,7 +49,7 @@ class BasePlotter:
         self.save_type = save_type
         self.plotting_params = kwargs
 
-    def generate_plots(self, iteration, x, x_new, y_preds, y_bounds, y_exact, y_new_exact):
+    def generate_plots(self, iteration, x, x_new, y_preds, y_bounds, y_exact, y_new_exact, **plot_kwargs):
         """
         The class responsible for generating the desired plots at each plotting interval
 
@@ -95,7 +95,7 @@ class BasePlotter:
             y_df.columns = [y_variable_name + " Predictions", "Lower Bound", "Upper Bound",
                             "Width", "Exact " + y_variable_name]
 
-            plot = self.supported_graphs[plot](plot_path, data_path, x_df, y_df, **self.plotting_params)
+            plot = self.supported_graphs[plot](plot_path, data_path, x_df, y_df, **plot_kwargs)
 
     @staticmethod
     def scatter_matrix(plot_path, data_path, x_df, y_df, *args, **kwargs):
@@ -118,10 +118,32 @@ class BasePlotter:
         **kwargs
             Extra keyword arguments to the pairplot function of sns
         """
+        use_seaborn = kwargs.pop("use_seaborn", None)
+        samples = kwargs.pop('samples', None)
 
-        pairwise_array = pd.concat([x_df, y_df[["Width", np.array(y_df.columns)[-1]]]], axis=1)
+        colormap = np.array([plt.cm.tab10.colors[0], plt.cm.tab10.colors[1]])
+        alphas = np.array([0.2, 1])
+        markers = np.array(["o", "s"])
 
-        plot = sns.pairplot(pairwise_array, hue='Sample_Delimiters', markers=["o", "s"], diag_kind='hist', **kwargs)
+        pairwise_array = pd.concat([x_df.iloc[:, :-1], y_df[["Width", np.array(y_df.columns)[-1]]],
+                                    x_df.iloc[:, -1]], axis=1)
+
+        dimension = len(pairwise_array.columns) - 1
+        plt.ioff()
+        fig, ax = plt.subplots(dimension, dimension, figsize=(dimension * 2, dimension * 2))
+        if samples is None:
+            plot_array = pairwise_array
+        else:
+            plot_array = pairwise_array.sample(samples).sort_index()
+
+        if use_seaborn is not None:
+            plot = sns.pairplot(plot_array, hue='Sample_Delimiters', markers=["o", "s"], diag_kind='hist', **kwargs)
+        else:
+            plot = pd.plotting.scatter_matrix(plot_array.iloc[:, :-1], ax=ax,
+                                        c=colormap[plot_array["Sample_Delimiters"].astype("category").cat.codes],
+                                        alpha=alphas[plot_array["Sample_Delimiters"].astype("category").cat.codes],
+                                        range_padding=0.25, edgecolors='white', s=70, hist_kwds={"color": colormap[0],
+                                                                                                 "edgecolor": "black"})
 
         json = pairwise_array.to_json(orient='split', compression='infer')
 
@@ -129,7 +151,7 @@ class BasePlotter:
             f.write(json)
 
         plt.savefig(plot_path)
-        plt.close()
+        plt.ion()
 
     @staticmethod
     def pred_vs_actual(plot_path, data_path, x_df, y_df, *args, **kwargs):

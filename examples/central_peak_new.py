@@ -6,7 +6,7 @@ Performs sampling on the central peak function in various dimensions
 import numpy as np
 from UBAS.generators.central_peak_generator import CentralPeakGenerator
 from UBAS.samplers.base_sampler import BaseSampler
-from UBAS.regressors.quant_nn import QuantNN
+from UBAS.regressors.quant_nn_regressor import QuantNNRegressor
 from UBAS.generators.input_generator import InputGenerator
 from UBAS.plotters.base_plotter import BasePlotter
 from UBAS.samplers.adaptive_sampler import AdaptiveSampler
@@ -41,15 +41,14 @@ def sample_central_peak(dimension, n_iterations, n_batch_points, n_initial_point
     a_plotter = deepcopy(u_plotter)
 
     # Initialize the uniform sampler
-    u_nn = QuantNN(input_dim=dimension, output_dim=2, hidden_dim=64, num_layers=6,
-                          quantiles=np.array([alpha / 2, 1 - alpha / 2]), max_epochs=10, batch_size=500)
+    u_nn = QuantNNRegressor(quantiles=[alpha/2, 1-alpha/2], layers=3, neurons=64, activation="relu", no_epochs=10)
 
     u_surrogate = KFoldQuantileRegressor(u_nn, method="plus", cv=KFold(n_splits=5, shuffle=True), alpha=alpha, n_jobs=7)
 
     a_surrogate = deepcopy(u_surrogate)
 
     u_directory = os.path.join("D:", os.sep, "UBAS", "projects", base_folder, "Uniform")
-    a_directory = os.path.join("D:", os.sep, "UBAS", "projects", base_folder, "Adaptive")
+    a_directory = os.path.join("D:", os.sep, "UBAS", "projects", base_folder, "Adaptive_logistic")
 
     u_sampler = BaseSampler(u_directory, dimension, u_surrogate, generator, sampling_bounds, n_iterations, n_batch_points,
                             initial_inputs, initial_targets, test_inputs, test_targets, intermediate_training=True,
@@ -57,14 +56,14 @@ def sample_central_peak(dimension, n_iterations, n_batch_points, n_initial_point
 
     a_sampler = AdaptiveSampler(a_directory, dimension, a_surrogate, generator, sampling_bounds, n_iterations, n_batch_points,
                             initial_inputs, initial_targets, test_inputs, test_targets, intermediate_training=True,
-                            plotter=a_plotter, save_interval=5, mean_relative_error=True, n_p_samples=1000000)
+                            plotter=a_plotter, save_interval=5, mean_relative_error=True, n_p_samples=1000000, width_scaling='logistic')
 
     # Perform sampling
     track_values = ["mean_relative_error", "mean_width", "coverage"]
 
-    #u_sampler.sample(track_values=track_values, plot_kwargs={"samples": 250})
+    #u_sampler.sample(track_values=track_values, plot_kwargs={"samples": None}, fit_kwargs={"n_epochs": 750, "batch_size": 128})
 
-    a_sampler.sample(track_values=track_values, plot_kwargs={"samples": 250})
+    a_sampler.sample(track_values=track_values, plot_kwargs={"samples": None}, fit_kwargs={"n_epochs": 750, "batch_size": 128})
 
     # plot mean_relative_error vs. number of samples
     mre_u = [perf.mean_relative_error for perf in u_sampler.model_performance]
@@ -81,4 +80,4 @@ def sample_central_peak(dimension, n_iterations, n_batch_points, n_initial_point
 
 
 if __name__ == "__main__":
-    sample_central_peak(dimension=10, n_iterations=20, n_batch_points=50, n_initial_points=5000, n_test_points=1000)
+    sample_central_peak(dimension=3, n_iterations=20, n_batch_points=20, n_initial_points=200, n_test_points=1000)

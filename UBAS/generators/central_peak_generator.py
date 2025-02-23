@@ -12,9 +12,16 @@ import numpy as np
 class CentralPeakGenerator(BaseGenerator):
     """Generator class for the central peak function in arbitrary dimensions"""
 
-    def __init__(self):
-        """Initialization for Central Peak Generator"""
-        pass
+    def __init__(self, exp=-10):
+        """
+        Initialization for Central Peak Generator
+
+        Parameters
+        ----------
+        exp : float default = -10
+            The front factor of the norm of the input vector which e is raised to
+        """
+        self.exp = exp
 
     def generate(self, x, *args, **kwargs) -> Tuple[NDArray, NDArray]:
         """
@@ -41,4 +48,4 @@ class CentralPeakGenerator(BaseGenerator):
             0-axis should have the same dimension as the 0-axis
             of `generated_x`
         """
-        return x, np.e ** (-10 * np.linalg.norm(x, axis=1) ** 2)
+        return x, np.e ** (self.exp * np.linalg.norm(x, axis=1) ** 2)
