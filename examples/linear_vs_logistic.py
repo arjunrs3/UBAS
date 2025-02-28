@@ -12,11 +12,12 @@ from UBAS.generators.input_generator import InputGenerator
 from UBAS.plotters.base_plotter import BasePlotter
 from UBAS.samplers.adaptive_sampler import AdaptiveSampler
 from UBAS.estimators.k_fold_quantile_estimator import KFoldQuantileRegressor
+from UBAS.utils.plotting import load_performance_data
 from copy import deepcopy
 from sklearn.model_selection import KFold
 import matplotlib.pyplot as plt
 import os
-
+plt.rcParams.update({"font.size": 20})
 
 def test_linear_vs_logistic():
     alpha = 0.2
@@ -74,5 +75,62 @@ def test_linear_vs_logistic():
                                    fit_kwargs={"n_epochs": n_epochs, "batch_size": batch_size})
 
 
+def plot_results(results, dims, function_names, n_trials):
+    n_samples = []
+    linear_solution_dict = {}
+    logistic_solution_dict = {}
+    for result in results:
+        linear_solution_dict[result] = []
+        logistic_solution_dict[result] = []
+
+    BASE_PATH = os.path.join("D:", os.sep, "UBAS", "projects", "linear_logistic")
+    for function in function_names:
+        for dim in dims:
+            SAVE_PATH = os.path.join(BASE_PATH, function, str(dim)+"D")
+
+            for result in results:
+                linear_solution_dict[result] = []
+                logistic_solution_dict[result] = []
+
+            for trial in range(n_trials):
+                linear_df = load_performance_data(os.path.join(SAVE_PATH, "linear",
+                                                               f"trial_{trial + 1}", "performance_data.json"))
+                logistic_df = load_performance_data(os.path.join(SAVE_PATH, "logistic",
+                                                                 f"trial_{trial + 1}", "performance_data.json"))
+
+                n_samples = linear_df["n_samples"]
+                for result in results:
+                    linear_solution_dict[result].append(linear_df[result])
+                    logistic_solution_dict[result].append(logistic_df[result])
+
+            for result in results:
+                PLOT_PATH = os.path.join(SAVE_PATH, f"{function}_{dim}D_{result}_scaling_comparison.png")
+                linear_solution = np.array(linear_solution_dict[result])
+                logistic_solution = np.array(logistic_solution_dict[result])
+                linear_mean = np.mean(linear_solution, axis=0)
+                logistic_mean = np.mean(logistic_solution, axis=0)
+
+                fig, ax = plt.subplots(figsize=(8, 8))
+                for i, sol in enumerate(linear_solution):
+                    ax.plot(n_samples, sol, color="blue", alpha=0.2, linestyle='solid')
+                    ax.plot(n_samples, logistic_solution[i], color='black', alpha=0.2, linestyle='dashed')
+                ax.plot(n_samples, linear_mean, color='blue', linestyle='solid', label='Linear Scaling')
+                ax.plot(n_samples, logistic_mean, color='black', linestyle='dashed', label='Logistic scaling')
+                ax.set_xlabel("Number of Samples")
+                ax.set_ylabel(result)
+                ax.legend()
+                ax.set_title(f"{result}: {dim}D {function}")
+                if result in ["mse", "mean_relative_error", "max_absolute_error"]:
+                    ax.semilogy()
+                plt.tight_layout()
+                plt.savefig(PLOT_PATH)
+                plt.show()
+
+
 if __name__ == "__main__":
-    test_linear_vs_logistic()
+    #test_linear_vs_logistic()
+    results = ["mse", "max_absolute_error", "mean_width", "max_width", "coverage"]
+    dims = [2, 4, 8]
+    function_names = ["central_peak_exp_40", "central_peak_exp_1", "AMGM", "Alpine02"]
+    n_trials = 3
+    plot_results(results, dims, function_names, n_trials)

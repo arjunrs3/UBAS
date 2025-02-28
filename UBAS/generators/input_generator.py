@@ -63,7 +63,7 @@ class InputGenerator:
                 np.ones((batch_samples, self.ndim)) * self._additive_factor
         return new_x
 
-    def adaptively_mc_sample(self, x_candidates, p, batch_samples=1, bin_width=None, ) -> NDArray:
+    def adaptively_mc_sample(self, x_candidates, p, batch_samples=1, bin_width=None) -> NDArray:
         """
         Generates adaptive samples within the bounds given in class initialization using
         a Monte Carlo sampled probability distribution

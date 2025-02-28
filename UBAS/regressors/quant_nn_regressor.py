@@ -49,12 +49,13 @@ class QuantNNRegressor(BaseEstimator):
         "demo_param": [str],
     }
 
-    def __init__(self, quantiles=[0.05, 0.95], layers=4, neurons=128, activation="relu", no_epochs=15):
+    def __init__(self, quantiles=[0.05, 0.95], layers=4, neurons=128, activation="relu", n_epochs=15, batch_size=32):
         self.quantiles = quantiles
         self.layers = layers
         self.neurons = neurons
         self.activation = activation
-        self.no_epochs = no_epochs
+        self.n_epochs = n_epochs
+        self.batch_size = batch_size
 
     @_fit_context(prefer_skip_nested_validation=True)
     def fit(self, X, y, **fit_params):
@@ -80,11 +81,12 @@ class QuantNNRegressor(BaseEstimator):
         # - run different checks on the input data;
         # - define some attributes associated to the input data: `n_features_in_` and
         #   `feature_names_in_`.
+
         X, y = self._validate_data(X, y, accept_sparse=True)
         model = (self.layers, self.neurons, self.activation)
         self.qrnn = q.QRNN(self.quantiles, n_inputs=X.shape[1], model=model)
         self.qrnn.is_fitted = True
-        results = self.qrnn.train((X, y), **fit_params)
+        results = self.qrnn.train((X, y), n_epochs=self.n_epochs, batch_size=self.batch_size, **fit_params)
         self.is_fitted_ = True
         # `fit` should always return `self`
         return self
@@ -108,3 +110,7 @@ class QuantNNRegressor(BaseEstimator):
         # `feature_names_in_` but only check that the shape is consistent.
         y_pred = self.qrnn.predict(X).numpy()
         return y_pred
+
+    def score(self, y_preds, y_true):
+        y_val = np.mean(y_preds, axis=1)
+        return -np.linalg.norm(y_val - y_true) ** 2

@@ -85,6 +85,7 @@ class BaseSampler:
 
         self.SAMPLER_DATA_PATH = os.path.join(self.directory, "sampler_data.pkl")
         self.PERF_DATA_PATH = os.path.join(self.directory, "performance_data.json")
+        self.TRACK_DATA_PATH = os.path.join(self.directory, "tracked_values.json")
 
         # Initialize sampler
         self.sampler = InputGenerator(bounds, dimension)
@@ -112,6 +113,13 @@ class BaseSampler:
         else:
             self.evaluate_surrogates = False
 
+        # Set iteration counter
+        self._iteration = 0
+
+        self.fit_kwargs = None
+        self.plot_kwargs = None
+        self.predict_kwargs = None
+
     def sample(self, track_values=["mean_width"], fit_kwargs=None, plot_kwargs=None, predict_kwargs=None):
         """
         Method to perform iterations of sample_step while handling re-training and evaluation the surrogate. Usually
@@ -133,8 +141,6 @@ class BaseSampler:
         n_initial_points = self.n_initial_points
         n_batch_points = self.n_batch_points
 
-        dynamic_plotting = False
-
         if track_values is not None and track_values is not []:
             dynamic_plotting = True
             plt.ion()
@@ -154,6 +160,10 @@ class BaseSampler:
                 ax_tup[i].set_ylabel(track_value)
                 graph_objects.append(ax_tup[i].plot([0], [0])[0])
                 tracked_variables[track_value] = []
+            plt.ioff()
+        else:
+            dynamic_plotting = False
+            tracked_variables = None
 
         if fit_kwargs is None:
             fit_kwargs = {}
@@ -164,9 +174,14 @@ class BaseSampler:
         if predict_kwargs is None:
             predict_kwargs = {}
 
+        self.fit_kwargs = fit_kwargs
+        self.plot_kwargs = plot_kwargs
+        self.predict_kwargs = predict_kwargs
+
         # Run sampling loop:
         for i in track(range(n_iterations), description=f"Running Main Sampling Loop: {self.directory}"):
             start_index = n_initial_points + i * n_batch_points
+            self._iteration = i
 
             # Re-train surrogate
             if self.intermediate_training is True:
@@ -179,13 +194,18 @@ class BaseSampler:
                     y_preds, y_bounds = self.predict(self.test_inputs, **predict_kwargs)
                     eval_obj = evaluate_performance(y_preds, y_bounds, self.test_targets, self.mean_relative_error)
                     self.model_performance[i] = eval_obj
-                    if (i + 1) % self.save_interval == 0:
-                        self.save_model_performance(self.model_performance[:i+1])
 
                     if dynamic_plotting is True:
                         tracked_variables["n_samples"].append(start_index)
+                        plt.ion()
                         for j, track_value in enumerate(track_values):
-                            tracked_variables[track_value].append(asdict(self.model_performance[i])[track_value])
+                            if track_value in list(asdict(self.model_performance[i]).keys()):
+                                tracked_variables[track_value].append(asdict(self.model_performance[i])[track_value])
+                            elif track_value in list(self.__dict__.keys()):
+                                tracked_variables[track_value].append(self.__dict__[track_value])
+                            else:
+                                raise UserWarning(f"Could not find requested tracking variable: {track_value}")
+
                             graph_objects[j].set_xdata(tracked_variables["n_samples"])
                             graph_objects[j].set_ydata(tracked_variables[track_value])
 
@@ -195,11 +215,14 @@ class BaseSampler:
 
                             fig.canvas.draw()
                             fig.canvas.flush_events()
-
+                            plt.ioff()
+                    if (i + 1) % self.save_interval == 0:
+                        self.save_model_performance(self.model_performance[:i+1], tracked_variables)
             # Sample new points with sampling_step
             print("Generating new inputs...")
             new_x = self.sampling_step(n_batch_points)
             new_x, new_y = self.generator.generate(new_x)
+
             self.x_exact[start_index:start_index+n_batch_points] = new_x
             self.y_exact[start_index:start_index+n_batch_points] = new_y
 
@@ -215,8 +238,6 @@ class BaseSampler:
             # Save Sampler State
             if (i + 1) % self.save_interval == 0:
                 self.save_sampler()
-        if dynamic_plotting:
-            plt.ioff()
 
         print("Re-training surrogate on full training data...")
 
@@ -233,9 +254,18 @@ class BaseSampler:
             else:
                 self.model_performance[0] = eval_obj
 
+            if dynamic_plotting is True:
+                tracked_variables["n_samples"].append(n_initial_points + n_iterations * n_batch_points)
+                for j, track_value in enumerate(track_values):
+                    if track_value in list(asdict(self.model_performance[n_iterations]).keys()):
+                        tracked_variables[track_value].append(asdict(self.model_performance[n_iterations])[track_value])
+                    elif track_value in list(self.__dict__.keys()):
+                        tracked_variables[track_value].append(self.__dict__[track_value])
+                    else:
+                        raise UserWarning(f"Could not find requested tracking variable: {track_value}")
         # Save data:
         print("Saving data...")
-        self.save_model_performance(self.model_performance)
+        self.save_model_performance(self.model_performance, tracked_variables)
         self.save_sampler()
         print("Sampling has finished")
 
@@ -286,7 +316,7 @@ class BaseSampler:
             y_preds = np.mean(pred_results, axis=1)
         return y_preds, y_bounds
 
-    def save_model_performance(self, model_performance_list):
+    def save_model_performance(self, model_performance_list, tracked_values=None):
         """
         Method to save the model performance outputs in an easily accessible file every several iterations
 
@@ -294,6 +324,8 @@ class BaseSampler:
         ----------
         model_performance_list : list(EvalObject)
             A list of eval objects describing the model performance
+        tracked_values : dict
+            A dictionary containing the tracked values that are plotted during runtime
         """
         dict_to_save = {}
         for i, perf in enumerate(model_performance_list):
@@ -304,7 +336,12 @@ class BaseSampler:
                 for key, value in asdict(perf).items():
                     dict_to_save[key].append(value)
 
-        dict_to_save["n_samples"] = list(self.n_initial_points + np.arange(model_performance_list.shape[0]) *
+        if tracked_values is not None:
+            for key, value in tracked_values.items():
+                if key not in list(dict_to_save.keys()):
+                    dict_to_save[key] = value
+        else:
+            dict_to_save["n_samples"] = list(self.n_initial_points + np.arange(model_performance_list.shape[0]) *
                                     self.n_batch_points)
 
         df = pd.DataFrame(dict_to_save)

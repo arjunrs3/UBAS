@@ -16,7 +16,7 @@ class AdaptiveSampler(BaseSampler):
     def __init__(self, directory, dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
                  initial_inputs, initial_targets, test_inputs=None, test_targets=None, intermediate_training=False,
                  plotter=None, save_interval=5, mean_relative_error=False, n_p_samples=10000, width_scaling='linear',
-                 exponent=1):
+                 starting_exponent=1, mode="min_variance"):
         """
         Class Initialization. Check BaseSampler documentation for parameter descriptions
 
@@ -31,6 +31,10 @@ class AdaptiveSampler(BaseSampler):
             If linear, an affine transformation is used to map the widths to the interval [0, 1]
             If logistic, an affine transformation maps the widths to [-6, 6] and is then transformed
                 by the standard logistic function.
+        mode : str default='min_variance'
+            The mode of the adaptive sampler. If min_variance, it will use the PMF of the widths to attempt to minimize
+            uncertainty across the domain. If max, it will sample from the PMF defined by the upper bound of the
+            predictions in an attempt to resolve local maxima.
         """
         super().__init__(directory, dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
                          initial_inputs, initial_targets, test_inputs, test_targets,
@@ -39,12 +43,14 @@ class AdaptiveSampler(BaseSampler):
         supported_width_scaling = {"linear": AdaptiveSampler.scale_values_linear,
                                    "logistic": AdaptiveSampler.scale_values_logistic}
         self.width_scaling_method = supported_width_scaling[width_scaling]
-        self.exponent=exponent
+        self.exponent = starting_exponent
+        self.mode = mode
 
     def sampling_step(self, n_batch_points) -> NDArray:
         """
         Override of sampling_step method in BaseSampler which uses the surrogate to predict `n_p_samples` values
-        and draw from the PMF proportional to their widths.
+        and draw from the PMF proportional to their widths if mode is "min_variance", or from the PMF proportional to
+        the predicted upper-bound if the mode is "max".
 
         Parameters
         ----------
@@ -56,13 +62,18 @@ class AdaptiveSampler(BaseSampler):
         new_x : NDArray
             The new adaptively sampled inputs
         """
+        exponent = self.exponent
         probability_eval_points = self.sampler.uniformly_sample(self.n_p_samples)
         print("Sampling probability distribution...")
         p_preds, p_bounds = self.predict(probability_eval_points)
-        widths = p_bounds[:, 1] - p_bounds[:, 0]
-        p = np.where(widths < 0, 0, widths)
+        if self.mode == "min_variance":
+            pmf = p_bounds[:, 1] - p_bounds[:, 0]
+            p = np.where(pmf < 0, 0, pmf)
+        elif self.mode == "max":
+            pmf = p_bounds[:, 1]
+            p = pmf - np.min(pmf)
         p = self.width_scaling_method(p)
-        p =  p ** self.exponent / np.sum(p ** self.exponent)
+        p = p ** exponent / np.sum(p ** exponent)
 
         new_x = self.sampler.adaptively_mc_sample(probability_eval_points, p, n_batch_points)
         return new_x

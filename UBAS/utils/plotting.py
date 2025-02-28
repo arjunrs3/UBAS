@@ -11,7 +11,7 @@ import os
 
 
 def load_performance_data(path):
-    with open(path, 'r') as f:
+    with open(path, 'rb') as f:
         df = pd.read_json(f, orient='split')
     return df
 
