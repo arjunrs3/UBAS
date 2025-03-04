@@ -14,9 +14,9 @@ class AdapExpAdaptiveSampler(AdaptiveSampler):
     """
     def __init__(self, directory, dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
                  initial_inputs, initial_targets, test_inputs=None, test_targets=None, intermediate_training=False,
-                 plotter=None, save_interval=5, mean_relative_error=False, n_p_samples=10000, width_scaling='linear',
-                 starting_exponent=1, mode="min_variance", learning_rate=0.1, momentum_decay=0,
-                 adaptive_exponent_method="mom", max_step=10, min_exp=1, max_exp=100):
+                 plotter=None, save_interval=5, mean_relative_error=False, adaptive_batch_size=False,
+                 n_p_samples=10000, width_scaling='linear', starting_exponent=1, mode="min_variance", learning_rate=0.1,
+                 momentum_decay=0, adaptive_exponent_method="mom", max_step=10, min_exp=1, max_exp=100):
         """
         Class Initialization. Check AdaptiveSampler and BaseSampler documentation for parameter descriptions
 
@@ -42,7 +42,7 @@ class AdapExpAdaptiveSampler(AdaptiveSampler):
         """
         super().__init__(directory, dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
                  initial_inputs, initial_targets, test_inputs, test_targets, intermediate_training,
-                 plotter, save_interval, mean_relative_error, n_p_samples, width_scaling,
+                 plotter, save_interval, mean_relative_error, adaptive_batch_size, n_p_samples, width_scaling,
                  starting_exponent, mode)
 
         self.learning_rate = learning_rate

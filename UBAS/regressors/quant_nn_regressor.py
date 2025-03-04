@@ -81,6 +81,12 @@ class QuantNNRegressor(BaseEstimator):
         # - run different checks on the input data;
         # - define some attributes associated to the input data: `n_features_in_` and
         #   `feature_names_in_`.
+        n_epochs = fit_params.pop("n_epochs", None)
+        if n_epochs is not None:
+            self.n_epochs = n_epochs
+        batch_size = fit_params.pop("batch_size", None)
+        if batch_size is not None:
+            self.batch_size = batch_size
 
         X, y = self._validate_data(X, y, accept_sparse=True)
         model = (self.layers, self.neurons, self.activation)

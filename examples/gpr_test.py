@@ -18,13 +18,13 @@ def gpr_test():
     alpha = 0.2
     n_iterations = 10
     n_batch_points = 20
-    n_initial_points = 200
-    test_points = 10000
-    n_p_samples = 200000
+    n_initial_points = 500
+    test_points = 100000
+    n_p_samples = 500000
     track_values = ["mse", "coverage", "exponent", "mean_relative_error"]
     function = CentralPeakGenerator(-15)
     function_name = "central_peak_exp_15"
-    dim = 2
+    dim = 8
     bounds = np.ones((2, dim)) * np.array([[-1, 1]]).T
     test_bounds = np.ones((2, dim)) * np.array([[-0.1, 0.1]]).T
     input_sampler = InputGenerator(bounds, dim)

@@ -13,9 +13,11 @@ from UBAS.generators.input_generator import InputGenerator
 from UBAS.plotters.base_plotter import BasePlotter
 from UBAS.samplers.adaptive_sampler import AdaptiveSampler
 from UBAS.estimators.k_fold_quantile_estimator import KFoldQuantileRegressor
+from UBAS.generators.twin_peaks_generator import TwinPeakGenerator
 from UBAS.utils.plotting import load_performance_data
 from copy import deepcopy
 from sklearn.model_selection import KFold
+from UBAS.regressors.gaussian_process_quantile_regressor import GaussianProcessQuantileRegressor
 import matplotlib.pyplot as plt
 import os
 import pickle
@@ -101,6 +103,103 @@ def test_adap_fixed_exp():
 
                 plt.close('all')
 
+def test_twin_peaks():
+    alpha = 0.2
+    n_iterations = 40
+    n_batch_points = [10, 10, 60]
+    n_initial_points = [50, 100, 200]
+    test_points = 100000
+    n_p_samples = 500000
+    track_values_mre = ["mse", "coverage", "exponent", "mean_relative_error"]
+    track_values_no_mre = ["mse", "coverage", "exponent"]
+    plot_samples = [None, None, None]
+    functions = [TwinPeakGenerator()]
+    function_names = ["TwinPeak"]
+    dims = [2, 4, 8]
+    num_trials = 3
+    bounds = [np.array([[-0.75, 0.95]]).T]
+    test_bounds_1 = [np.array([[-0.75, -0.25]]).T]
+    test_bounds_2 = [np.array([[0.25, 0.95]]).T]
+    mean_relative_errors = [True, False, False, False]
+
+    plotter = BasePlotter("", plotting_interval=5, plots=["scatter_matrix"],
+                          input_names=None, target_name="Y", save_type="png")
+
+    n_epochs = [444, 1805, 1805]
+    n_layers = [6, 7, 8]
+    neurons = [128, 256, 256]
+
+    for i, function in enumerate(functions):
+        mean_relative_error = mean_relative_errors[i]
+        if mean_relative_error is True:
+            track_values = track_values_mre
+        else:
+            track_values = track_values_no_mre
+
+        for j, dim in enumerate(dims):
+            bound = (np.ones((2, dim)) * bounds[i])
+            test_bound_1 = (np.ones((2, dim)) * test_bounds_1[i])
+            test_bound_2 = (np.ones((2, dim)) * test_bounds_2[i])
+            input_sampler = InputGenerator(bound, dim)
+            test_sampler_1 = InputGenerator(test_bound_1, dim)
+            test_sampler_2 = InputGenerator(test_bound_2, dim)
+            n_initial_point = n_initial_points[j]
+            batch_points = n_batch_points[j]
+            plot_sample = plot_samples[j]
+            n_epoch = n_epochs[j]
+            n_layer = n_layers[j]
+            neuron = neurons[j]
+
+            nn = QuantNNRegressor(quantiles=[alpha / 2, 1 - alpha / 2], layers=n_layer, neurons=neuron, activation="relu",
+                                  n_epochs=n_epoch)
+
+            nn_surrogate = KFoldQuantileRegressor(nn, method="plus", cv=KFold(n_splits=5, shuffle=True), alpha=alpha,
+                                               n_jobs=7)
+
+            gp_surrogate = GaussianProcessQuantileRegressor(quantiles=[alpha / 2, 1 - alpha / 2])
+
+            for trial in range(num_trials):
+                init_inputs, init_targets = function.generate(input_sampler.uniformly_sample(n_initial_point))
+                test_inputs_1, test_targets_1 = function.generate(test_sampler_1.uniformly_sample(int(test_points / 2)))
+                test_inputs_2, test_targets_2 = function.generate(test_sampler_2.uniformly_sample(int(test_points / 2)))
+                print (test_inputs_1)
+                test_inputs = np.append(test_inputs_1, test_inputs_2, axis=0)
+                print (test_inputs)
+                test_targets = np.append(test_targets_1, test_targets_2)
+                print (test_targets)
+
+                path = os.path.join("D:", os.sep, "UBAS", "projects", "nn_gp",
+                                    function_names[i], str(dim) + "D")
+
+                sampler = AdapExpAdaptiveSampler(os.path.join(path, "nn", f"trial_{trial + 1}"), dim,
+                                                 deepcopy(nn_surrogate), function, bound, n_iterations, batch_points,
+                                                 init_inputs, init_targets, test_inputs, test_targets,
+                                                 intermediate_training=True, plotter=plotter, save_interval=5,
+                                                 mean_relative_error=mean_relative_error, adaptive_batch_size=True,
+                                                 n_p_samples=n_p_samples,
+                                                 width_scaling='linear', starting_exponent=dim,
+                                                 learning_rate=0.1, momentum_decay=0.9, adaptive_exponent_method="mom",
+                                                 max_step=dim * 2, min_exp=1, max_exp=100)
+
+                sampler.plotter.input_names = ["X" + str(j + 1) for j in range(dim)]
+                sampler.sample(track_values=track_values, plot_kwargs={"samples": plot_sample})
+
+                sampler = AdapExpAdaptiveSampler(os.path.join(path, "gp", f"trial_{trial + 1}"), dim,
+                                                 deepcopy(gp_surrogate), function, bound, n_iterations, batch_points,
+                                                 init_inputs, init_targets, test_inputs, test_targets,
+                                                 intermediate_training=True, plotter=plotter, save_interval=5,
+                                                 mean_relative_error=mean_relative_error, adaptive_batch_size=False,
+                                                 n_p_samples=n_p_samples,
+                                                 width_scaling='linear', starting_exponent=dim,
+                                                 learning_rate=0.1, momentum_decay=0.9, adaptive_exponent_method="mom",
+                                                 max_step=dim * 2, min_exp=1, max_exp=100)
+
+                sampler.plotter.input_names = ["X" + str(j + 1) for j in range(dim)]
+
+                sampler.sample(track_values=track_values, plot_kwargs={"samples": plot_sample})
+
+                plt.close('all')
+
 def plot_results(results, dims, function_names, n_trials):
     n_samples = []
     fixed_solution_dict = {}
@@ -153,9 +252,9 @@ def plot_results(results, dims, function_names, n_trials):
 
 
 if __name__ == "__main__":
-    #test_adap_fixed_exp()
-    results = ["mse", "max_absolute_error", "mean_width", "max_width", "coverage", "exponent"]
-    dims = [2, 4, 8]
-    function_names = ["central_peak_exp_15", "central_peak_exp_1", "AMGM", "Alpine02"]
-    n_trials = 3
-    plot_results(results, dims, function_names, n_trials)
+    test_twin_peaks()
+    #results = ["mse", "max_absolute_error", "mean_width", "max_width", "coverage", "exponent"]
+    #dims = [2, 4, 8]
+    #function_names = ["central_peak_exp_15", "central_peak_exp_1", "AMGM", "Alpine02"]
+    #n_trials = 3
+    #plot_results(results, dims, function_names, n_trials)

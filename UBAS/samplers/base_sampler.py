@@ -20,7 +20,7 @@ class BaseSampler:
     """Base class for data samplers that samples uniformly within the given bounds"""
     def __init__(self, directory, dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
                  initial_inputs, initial_targets, test_inputs=None, test_targets=None, intermediate_training=False,
-                 plotter=None, save_interval=5, mean_relative_error=False):
+                 plotter=None, save_interval=5, mean_relative_error=False, adaptive_batch_size=False):
         """
         Sampler Initialization
 
@@ -62,6 +62,8 @@ class BaseSampler:
         mean_relative_error : Bool, default=False
             If True, mean relative error metrics will be computed (as long as test_inputs and test_targets are
             provided). If false, the mean relative error will be none in the error evaluation objects.
+        adaptive_batch_size : Bool, default=False
+            If True, the batch size will be automatically set to a third of the number of training points used
         """
         self.directory = directory
         self.dimension = dimension
@@ -80,6 +82,7 @@ class BaseSampler:
         self.plotter.filename = self.directory
         self.save_interval = save_interval
         self.mean_relative_error = mean_relative_error
+        self.adaptive_batch_size = adaptive_batch_size
 
         os.makedirs(self.directory, exist_ok=True)
 
@@ -181,6 +184,11 @@ class BaseSampler:
         # Run sampling loop:
         for i in track(range(n_iterations), description=f"Running Main Sampling Loop: {self.directory}"):
             start_index = n_initial_points + i * n_batch_points
+
+            if self.adaptive_batch_size is True:
+                fit_kwargs["batch_size"] = int(start_index / 3)
+                self.fit_kwargs = fit_kwargs
+
             self._iteration = i
 
             # Re-train surrogate
