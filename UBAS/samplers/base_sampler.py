@@ -19,8 +19,9 @@ from matplotlib import pyplot as plt
 class BaseSampler:
     """Base class for data samplers that samples uniformly within the given bounds"""
     def __init__(self, directory, dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
-                 initial_inputs, initial_targets, test_inputs=None, test_targets=None, intermediate_training=False,
-                 plotter=None, save_interval=5, mean_relative_error=False, adaptive_batch_size=False):
+                 initial_inputs, initial_targets, test_inputs=None, test_targets=None, scaler=None,
+                 intermediate_training=False, plotter=None, save_interval=5, mean_relative_error=False,
+                 adaptive_batch_size=False):
         """
         Sampler Initialization
 
@@ -52,6 +53,11 @@ class BaseSampler:
         test_targets : NDArray default=None
             Targets of a validation set to test the surrogate model against. If not provided, no evaluation will occur
             Should be of shape (n_test_samples, )
+        scaler : MinMaxScaler default=None
+            If None, data will not be reverse scaled before being sent to the generator. If a scaler is passed, the
+            new_x coordinates will first be unscaled before being sent to the generator. In this case, the scaler should
+            encode the transformation from the bounds meant to be passed to the generator to the bounds passed to the
+            sampler.
         intermediate_training : Bool default=False
             If True, the surrogate model will be retrained after every sampling iteration. If False, the surrogate
             model gets trained once at the end of sampling
@@ -77,6 +83,7 @@ class BaseSampler:
         self.n_initial_points = self.initial_inputs.shape[0]
         self.test_inputs = test_inputs
         self.test_targets = test_targets
+        self.scaler = scaler
         self.intermediate_training = intermediate_training
         self.plotter = plotter
         self.plotter.filename = self.directory
@@ -148,7 +155,7 @@ class BaseSampler:
             dynamic_plotting = True
             plt.ion()
 
-            fig, ax_tup = plt.subplots(len(track_values), 1, sharex=True)
+            fig, ax_tup = plt.subplots(len(track_values), 1, sharex=True, figsize=(10, 10))
             plt.tight_layout()
             if not isinstance(ax_tup, Iterable):
                 ax_tup = [ax_tup]
@@ -229,7 +236,13 @@ class BaseSampler:
             # Sample new points with sampling_step
             print("Generating new inputs...")
             new_x = self.sampling_step(n_batch_points)
-            new_x, new_y = self.generator.generate(new_x)
+
+            if self.scaler is None:
+                new_x, new_y = self.generator.generate(new_x)
+            else:
+                unscaled_x = self.scaler.inverse_transform(new_x)
+                unscaled_x, new_y = self.generator.generate(unscaled_x)
+                new_x = self.scaler.transform(unscaled_x)
 
             self.x_exact[start_index:start_index+n_batch_points] = new_x
             self.y_exact[start_index:start_index+n_batch_points] = new_y
@@ -239,10 +252,16 @@ class BaseSampler:
                 print("Plotting Data...")
                 if (i + 1) % self.plotter.plotting_interval == 0:
                     y_preds, y_bounds = self.predict(self.x_exact[:start_index+n_batch_points], **predict_kwargs)
-                    self.plotter.generate_plots(i+1, self.x_exact[:start_index+n_batch_points], new_x, y_preds,
-                                                y_bounds, self.y_exact[:start_index+n_batch_points], new_y,
-                                                **plot_kwargs)
-
+                    if self.scaler is None:
+                        self.plotter.generate_plots(i+1, self.x_exact[:start_index+n_batch_points], new_x, y_preds,
+                                                    y_bounds, self.y_exact[:start_index+n_batch_points], new_y,
+                                                    **plot_kwargs)
+                    else:
+                        self.plotter.generate_plots(i + 1, self.scaler.inverse_transform(self.x_exact[:start_index +
+                                                                                                       n_batch_points]),
+                                                    self.scaler.inverse_transform(new_x), y_preds,
+                                                    y_bounds, self.y_exact[:start_index + n_batch_points], new_y,
+                                                    **plot_kwargs)
             # Save Sampler State
             if (i + 1) % self.save_interval == 0:
                 self.save_sampler()

@@ -14,7 +14,8 @@ import matplotlib.pyplot as plt
 class AdaptiveSampler(BaseSampler):
     """Adaptive Sampling Parent Class"""
     def __init__(self, directory, dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
-                 initial_inputs, initial_targets, test_inputs=None, test_targets=None, intermediate_training=False,
+                 initial_inputs, initial_targets, test_inputs=None, test_targets=None, scaler=None,
+                 intermediate_training=False,
                  plotter=None, save_interval=5, mean_relative_error=False, adaptive_batch_size=False,
                  n_p_samples=10000, width_scaling='linear', starting_exponent=1, mode="min_variance"):
         """
@@ -37,7 +38,7 @@ class AdaptiveSampler(BaseSampler):
             predictions in an attempt to resolve local maxima.
         """
         super().__init__(directory, dimension, surrogate, generator, bounds, n_iterations, n_batch_points,
-                         initial_inputs, initial_targets, test_inputs, test_targets,
+                         initial_inputs, initial_targets, test_inputs, test_targets, scaler,
                          intermediate_training, plotter, save_interval, mean_relative_error, adaptive_batch_size)
         self.n_p_samples = n_p_samples
         supported_width_scaling = {"linear": AdaptiveSampler.scale_values_linear,
@@ -66,12 +67,14 @@ class AdaptiveSampler(BaseSampler):
         probability_eval_points = self.sampler.uniformly_sample(self.n_p_samples)
         print("Sampling probability distribution...")
         p_preds, p_bounds = self.predict(probability_eval_points)
+        print (probability_eval_points)
         if self.mode == "min_variance":
             pmf = p_bounds[:, 1] - p_bounds[:, 0]
             p = np.where(pmf < 0, 0, pmf)
         elif self.mode == "max":
             pmf = p_bounds[:, 1]
             p = pmf - np.min(pmf)
+        print(p)
         p = self.width_scaling_method(p)
         p = p ** exponent / np.sum(p ** exponent)
 

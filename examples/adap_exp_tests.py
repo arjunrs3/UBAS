@@ -184,19 +184,20 @@ def test_twin_peaks():
                 sampler.plotter.input_names = ["X" + str(j + 1) for j in range(dim)]
                 sampler.sample(track_values=track_values, plot_kwargs={"samples": plot_sample})
 
-                sampler = AdapExpAdaptiveSampler(os.path.join(path, "gp", f"trial_{trial + 1}"), dim,
-                                                 deepcopy(gp_surrogate), function, bound, n_iterations, batch_points,
-                                                 init_inputs, init_targets, test_inputs, test_targets,
-                                                 intermediate_training=True, plotter=plotter, save_interval=5,
-                                                 mean_relative_error=mean_relative_error, adaptive_batch_size=False,
-                                                 n_p_samples=n_p_samples,
-                                                 width_scaling='linear', starting_exponent=dim,
-                                                 learning_rate=0.1, momentum_decay=0.9, adaptive_exponent_method="mom",
-                                                 max_step=dim * 2, min_exp=1, max_exp=100)
+                if dim != 8:
+                    sampler = AdapExpAdaptiveSampler(os.path.join(path, "gp", f"trial_{trial + 1}"), dim,
+                                                     deepcopy(gp_surrogate), function, bound, n_iterations, batch_points,
+                                                     init_inputs, init_targets, test_inputs, test_targets,
+                                                     intermediate_training=True, plotter=plotter, save_interval=5,
+                                                     mean_relative_error=mean_relative_error, adaptive_batch_size=False,
+                                                     n_p_samples=n_p_samples,
+                                                     width_scaling='linear', starting_exponent=dim,
+                                                     learning_rate=0.1, momentum_decay=0.9, adaptive_exponent_method="mom",
+                                                     max_step=dim * 2, min_exp=1, max_exp=100)
 
-                sampler.plotter.input_names = ["X" + str(j + 1) for j in range(dim)]
+                    sampler.plotter.input_names = ["X" + str(j + 1) for j in range(dim)]
 
-                sampler.sample(track_values=track_values, plot_kwargs={"samples": plot_sample})
+                    sampler.sample(track_values=track_values, plot_kwargs={"samples": plot_sample})
 
                 plt.close('all')
 

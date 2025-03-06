@@ -117,6 +117,7 @@ class QuantNNRegressor(BaseEstimator):
         y_pred = self.qrnn.predict(X).numpy()
         return y_pred
 
-    def score(self, y_preds, y_true):
+    def score(self, X, y_true):
+        y_preds = self.predict(X)
         y_val = np.mean(y_preds, axis=1)
-        return -np.linalg.norm(y_val - y_true) ** 2
+        return -np.linalg.norm(y_val - y_true) ** 2 / y_val.shape[0] * 10 ** 5
