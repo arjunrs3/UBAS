@@ -102,5 +102,24 @@ def gpr_test2():
     print (f"{coverage = }")
     plt.show()
 
+def test_1D():
+    alpha = 0.2
+    n_points = 10
+    x = np.random.rand(n_points, 1) * 2 - 1
+    y = np.e ** (-np.abs(x)).ravel()
+    gp = GaussianProcessQuantileRegressor(quantiles=[alpha / 2, 1 - alpha / 2])
+    gp.fit(x, y)
+    x_vals = np.linspace(-1, 1, 100).reshape(-1, 1)
+    preds, bounds = gp.predict(x_vals)
+
+    fig, ax = plt.subplots()
+    ax.fill_between(x_vals.ravel(), bounds[:, 0], bounds[:, 1], interpolate=True, facecolor='gray')
+    ax.set_xlabel("X")
+    ax.set_ylabel("y")
+    ax.plot(x_vals.ravel(), preds, linestyle='dashed', color='red', label='Predicted Mean')
+    ax.scatter(x, y, color='black', label='Training Points')
+    plt.show()
+
+
 if __name__ == "__main__":
-    gpr_test()
+    test_1D()

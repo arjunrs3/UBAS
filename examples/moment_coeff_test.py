@@ -17,7 +17,7 @@ import pickle
 plt.rcParams.update({"font.size": 20})
 
 
-def moment_coeffs():
+def moment_coeffs(mode="max"):
     alpha = 0.2
     n_iterations = 40
     n_batch_points = [20, 10]
@@ -45,12 +45,15 @@ def moment_coeffs():
     plotter = BasePlotter("", plotting_interval=1, plots=["scatter_matrix"],
                           input_names=None, target_name="Y", save_type="png")
 
-    n_epochs = [[1933, 2733, 2733], [2200, 2200, 2466]]
-    n_layers = [[4, 8, 4], [6, 8, 4]]
+    n_epochs = [[1933, 2733, 2733], [2200, 2466, 2466]]
+    n_layers = [[4, 8, 4], [6, 2, 4]]
     neurons = [[200, 256, 200], [200, 256, 200]]
 
     for i, airfoil in enumerate(airfoils):
         for j, qoi in enumerate(qois):
+            if airfoil is None or qoi != "CL":
+                continue
+            print (airfoil, qoi)
             function = NFGenerator(qoi=qoi, airfoil=airfoil)
             un_scaled_bound = bounds[i]
             un_scaled_test_bound = bounds[i]
@@ -87,7 +90,7 @@ def moment_coeffs():
                 init_inputs = scaler.transform(unscaled_inputs)
                 test_inputs = scaler.transform(unscaled_test_inputs)
 
-                path = os.path.join("D:", os.sep, "UBAS", "projects", "nn_gp",
+                path = os.path.join("D:", os.sep, "UBAS", "projects", "nn_gp_" + mode,
                                     "moment_coeff", qoi, names[i])
 
                 sampler = AdapExpAdaptiveSampler(os.path.join(path, "nn", f"trial_{trial + 1}"), dim,
@@ -96,7 +99,7 @@ def moment_coeffs():
                                                  intermediate_training=True, plotter=plotter, save_interval=5,
                                                  mean_relative_error=mean_relative_error, adaptive_batch_size=True,
                                                  n_p_samples=n_p_samples,
-                                                 width_scaling='linear', starting_exponent=dim,
+                                                 width_scaling='linear', starting_exponent=dim, mode=mode,
                                                  learning_rate=0.1, momentum_decay=0.25, adaptive_exponent_method="mom",
                                                  max_step=dim * 2, min_exp=1, max_exp=100)
 
@@ -109,7 +112,7 @@ def moment_coeffs():
                                                  intermediate_training=True, plotter=plotter, save_interval=5,
                                                  mean_relative_error=mean_relative_error, adaptive_batch_size=False,
                                                  n_p_samples=n_p_samples,
-                                                 width_scaling='linear', starting_exponent=dim,
+                                                 width_scaling='linear', starting_exponent=dim, mode=mode,
                                                  learning_rate=0.1, momentum_decay=0.25, adaptive_exponent_method="mom",
                                                  max_step=dim * 2, min_exp=1, max_exp=100)
 
@@ -120,7 +123,7 @@ def moment_coeffs():
                 plt.close('all')
 
 
-def plot_results(results, dims, function_names, n_trials):
+def plot_results(results, dims, qois, n_trials):
     n_samples = []
     nn_solution_dict = {}
     gp_solution_dict = {}
@@ -128,27 +131,26 @@ def plot_results(results, dims, function_names, n_trials):
         nn_solution_dict[result] = []
         gp_solution_dict[result] = []
 
-    BASE_PATH = os.path.join("D:", os.sep, "UBAS", "projects", "nn_gp")
-    for function in function_names:
+    BASE_PATH = os.path.join("D:", os.sep, "UBAS", "projects", "nn_gp_min_variance", "moment_coeff")
+    for qoi in qois:
         for dim in dims:
-            SAVE_PATH = os.path.join(BASE_PATH, function, str(dim)+"D")
+            SAVE_PATH = os.path.join(BASE_PATH, qoi, str(dim)+"D")
             for result in results:
                 nn_solution_dict[result] = []
                 gp_solution_dict[result] = []
 
             for trial in range(n_trials):
                 nn_df = load_performance_data(os.path.join(SAVE_PATH, "nn",
-                                                               f"trial_{trial + 1}", "performance_data.json"))
+                                                              f"trial_{trial + 1}", "performance_data.json"))
                 gp_df = load_performance_data(os.path.join(SAVE_PATH, "gp",
                                                                  f"trial_{trial + 1}", "performance_data.json"))
-
-                n_samples = nn_df["n_samples"]
-                for result in results:
-                    nn_solution_dict[result].append(nn_df[result])
-                    gp_solution_dict[result].append(gp_df[result])
+            n_samples = nn_df["n_samples"]
+            for result in results:
+                nn_solution_dict[result].append(nn_df[result])
+                gp_solution_dict[result].append(gp_df[result])
 
             for result in results:
-                PLOT_PATH = os.path.join(SAVE_PATH, f"{function}_{dim}D_{result}_new_nn_gp.png")
+                PLOT_PATH = os.path.join(SAVE_PATH, f"{qoi}_{dim}D_{result}_nn_gp.png")
                 nn_solution = np.array(nn_solution_dict[result])
                 gp_solution = np.array(gp_solution_dict[result])
                 nn_mean = np.mean(nn_solution, axis=0)
@@ -163,18 +165,79 @@ def plot_results(results, dims, function_names, n_trials):
                 ax.set_xlabel("Number of Samples")
                 ax.set_ylabel(result)
                 ax.legend()
-                ax.set_title(f"{result}: {dim}D {function}")
+                ax.set_title(f"{result}: {dim}D {qoi}")
                 if result in ["mse", "mean_relative_error", "max_absolute_error"]:
                     ax.semilogy()
                 plt.tight_layout()
                 plt.savefig(PLOT_PATH)
                 plt.show()
 
+def plot_maximums(dims, qois, n_trials):
+    BASE_PATH = os.path.join("D:", os.sep, "UBAS", "projects", "nn_gp_max", "moment_coeff")
+    for qoi in qois:
+        for dim in dims:
+            SAVE_PATH = os.path.join(BASE_PATH, qoi, str(dim) + "D")
+            nn_solutions = []
+            gp_solutions = []
+            for trial in range(n_trials):
+                with open(os.path.join(SAVE_PATH, "nn", f"trial_{trial + 1}", "sampler_data.pkl"), 'rb') as f:
+                    nn_sampler = pickle.load(f)
+                with open(os.path.join(SAVE_PATH, "gp", f"trial_{trial + 1}", "sampler_data.pkl"), 'rb') as f:
+                    gp_sampler = pickle.load(f)
+                nn_inputs = nn_sampler.x_exact
+                gp_inputs = gp_sampler.x_exact
+                nn_outputs = nn_sampler.y_exact
+                gp_outputs = gp_sampler.y_exact
+                initial_points = nn_sampler.n_initial_points
+                batch_points = nn_sampler.n_batch_points
+                n_iterations = nn_sampler.n_iterations
+                nn_array = np.zeros(n_iterations+1)
+                gp_array = np.zeros(n_iterations+1)
+                n_samples = np.empty_like(nn_array)
+                for i in range(n_iterations+1):
+                    index = initial_points + batch_points * i
+                    nn_array[i] = np.max(nn_outputs[:index])
+                    gp_array[i] = np.max(gp_outputs[:index])
+                    n_samples[i] = index
+                nn_solutions.append(nn_array)
+                gp_solutions.append(gp_array)
+            PLOT_PATH = os.path.join(SAVE_PATH, f"{qoi}_{dim}D_maxima_nn_gp.png")
+
+            nn_solutions = np.array(nn_solutions)
+            gp_solutions = np.array(gp_solutions)
+            nn_mean = np.mean(nn_solutions, axis=0)
+            gp_mean = np.mean(gp_solutions, axis=0)
+
+            fig, ax = plt.subplots(figsize=(8, 8))
+            for i, sol in enumerate(nn_solutions):
+                ax.plot(n_samples, sol, color="black", alpha=0.2, linestyle='dashed')
+                ax.plot(n_samples, gp_solutions[i], color='blue', alpha=0.2, linestyle='solid')
+            ax.plot(n_samples, nn_mean, color='black', linestyle='dashed', label='Neural Network')
+            ax.plot(n_samples, gp_mean, color='blue', linestyle='solid', label='Gaussian Process')
+            ax.set_xlabel("Number of Samples")
+            ax.set_ylabel("Maximum Value")
+            ax.legend()
+            ax.set_title(f"Maximum Value Comparison: {dim}D {qoi}")
+            plt.tight_layout()
+            plt.savefig(PLOT_PATH)
+            plt.show()
 
 if __name__ == "__main__":
-    #results = ["mse", "mean_relative_error", "max_absolute_error", "mean_width", "max_width", "coverage", "exponent"]
-    #dims = [4]
-    #function_names = ["TwinPeak"]
-    #n_trials = 3
-    #plot_results(results, dims, function_names, n_trials)
-    moment_coeffs()
+    #results = ["mse", "max_absolute_error", "mean_width", "max_width", "coverage", "exponent"]
+    #dims = [2, 5]
+    #qois = ["CL", "CD", "CM"]
+    dims = [2]
+    qois = ["CL"]
+    results = ["mse"]
+    n_trials = 1
+    plot_results(results, dims, qois, n_trials)
+    #results = ["mse"]
+    #dims = [2]
+    #qois = ["CL"]
+    #n_trials=1
+    #plot_results(results, dims, qois, n_trials)
+    #dims = [2, 5]
+    #qois = ["CM", "CL", "CD"]
+    #n_trials = 1
+    #plot_maximums(dims, qois, n_trials)
+    #moment_coeffs(mode='min_variance')

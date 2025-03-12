@@ -18,7 +18,7 @@ import pickle
 plt.rcParams.update({"font.size": 20})
 
 
-def test_central_peak_functions():
+def test_central_peak_functions(mode='max'):
     alpha = 0.2
     n_iterations = 40
     n_batch_points = [[15, 15], [10, 15]]#[[10, 15, 15], [5, 10, 15]]
@@ -66,7 +66,7 @@ def test_central_peak_functions():
                 init_inputs, init_targets = function.generate(input_sampler.uniformly_sample(n_initial_point))
                 test_inputs, test_targets = function.generate(test_sampler.uniformly_sample(int(test_points)))
 
-                path = os.path.join("D:", os.sep, "UBAS", "projects", "nn_gp",
+                path = os.path.join("D:", os.sep, "UBAS", "projects", "nn_gp_" + mode,
                                     function_names[i], str(dim) + "D")
 
                 sampler = AdapExpAdaptiveSampler(os.path.join(path, "nn", f"trial_{trial + 1}"), dim,
@@ -75,7 +75,7 @@ def test_central_peak_functions():
                                                  intermediate_training=True, plotter=plotter, save_interval=5,
                                                  mean_relative_error=mean_relative_error, adaptive_batch_size=True,
                                                  n_p_samples=n_p_samples,
-                                                 width_scaling='linear', starting_exponent=dim,
+                                                 width_scaling='linear', starting_exponent=dim, mode=mode,
                                                  learning_rate=0.1, momentum_decay=0.25, adaptive_exponent_method="mom",
                                                  max_step=dim * 2, min_exp=1, max_exp=100)
 
@@ -88,7 +88,7 @@ def test_central_peak_functions():
                                                  intermediate_training=True, plotter=plotter, save_interval=5,
                                                  mean_relative_error=mean_relative_error, adaptive_batch_size=False,
                                                  n_p_samples=n_p_samples,
-                                                 width_scaling='linear', starting_exponent=dim,
+                                                 width_scaling='linear', starting_exponent=dim, mode=mode,
                                                  learning_rate=0.1, momentum_decay=0.25, adaptive_exponent_method="mom",
                                                  max_step=dim * 2, min_exp=1, max_exp=100)
 
@@ -97,7 +97,7 @@ def test_central_peak_functions():
                 sampler.sample(track_values=track_values, plot_kwargs={"samples": plot_sample})
 
                 plt.close('all')
-def test_twin_peaks():
+def test_twin_peaks(mode='max'):
     alpha = 0.2
     n_iterations = 40
     n_batch_points = [10, 15, 60]
@@ -111,7 +111,7 @@ def test_twin_peaks():
     function_names = ["TwinPeak"]
     #dims = [2, 4, 8]
     dims = [2, 4, 8]
-    num_trials = 3
+    num_trials = 1
     bounds = [np.array([[-0.75, 0.95]]).T]
     test_bounds_1 = [np.array([[-0.75, -0.25]]).T]
     test_bounds_2 = [np.array([[0.25, 0.95]]).T]
@@ -132,7 +132,6 @@ def test_twin_peaks():
             track_values = track_values_no_mre
 
         for j, dim in enumerate(dims):
-            if dim == 4:
                 bound = (np.ones((2, dim)) * bounds[i])
                 test_bound_1 = (np.ones((2, dim)) * test_bounds_1[i])
                 test_bound_2 = (np.ones((2, dim)) * test_bounds_2[i])
@@ -164,7 +163,7 @@ def test_twin_peaks():
                     test_targets = np.append(test_targets_1, test_targets_2)
                     print (test_targets)
 
-                    path = os.path.join("D:", os.sep, "UBAS", "projects", "nn_gp",
+                    path = os.path.join("D:", os.sep, "UBAS", "projects", "nn_gp_" + mode,
                                         function_names[i], str(dim) + "D")
 
                     sampler = AdapExpAdaptiveSampler(os.path.join(path, "nn", f"trial_{trial + 1}"), dim,
@@ -173,27 +172,26 @@ def test_twin_peaks():
                                                      intermediate_training=True, plotter=plotter, save_interval=5,
                                                      mean_relative_error=mean_relative_error, adaptive_batch_size=True,
                                                      n_p_samples=n_p_samples,
-                                                     width_scaling='linear', starting_exponent=dim,
+                                                     width_scaling='linear', starting_exponent=dim, mode=mode,
                                                      learning_rate=0.1, momentum_decay=0.9, adaptive_exponent_method="mom",
                                                      max_step=dim * 2, min_exp=1, max_exp=100)
 
                     sampler.plotter.input_names = ["X" + str(j + 1) for j in range(dim)]
                     sampler.sample(track_values=track_values, plot_kwargs={"samples": plot_sample})
 
-                    if dim != 8:
-                        sampler = AdapExpAdaptiveSampler(os.path.join(path, "gp", f"trial_{trial + 1}"), dim,
-                                                         deepcopy(gp_surrogate), function, bound, n_iterations, batch_points,
-                                                         init_inputs, init_targets, test_inputs, test_targets,
-                                                         intermediate_training=True, plotter=plotter, save_interval=5,
-                                                         mean_relative_error=mean_relative_error, adaptive_batch_size=False,
-                                                         n_p_samples=n_p_samples,
-                                                         width_scaling='linear', starting_exponent=dim,
-                                                         learning_rate=0.1, momentum_decay=0.9, adaptive_exponent_method="mom",
-                                                         max_step=dim * 2, min_exp=1, max_exp=100)
+                    sampler = AdapExpAdaptiveSampler(os.path.join(path, "gp", f"trial_{trial + 1}"), dim,
+                                                     deepcopy(gp_surrogate), function, bound, n_iterations, batch_points,
+                                                     init_inputs, init_targets, test_inputs, test_targets,
+                                                     intermediate_training=True, plotter=plotter, save_interval=5,
+                                                     mean_relative_error=mean_relative_error, adaptive_batch_size=False,
+                                                     n_p_samples=n_p_samples,
+                                                     width_scaling='linear', starting_exponent=dim, mode=mode,
+                                                     learning_rate=0.1, momentum_decay=0.9, adaptive_exponent_method="mom",
+                                                     max_step=dim * 2, min_exp=1, max_exp=100)
 
-                        sampler.plotter.input_names = ["X" + str(j + 1) for j in range(dim)]
+                    sampler.plotter.input_names = ["X" + str(j + 1) for j in range(dim)]
 
-                        sampler.sample(track_values=track_values, plot_kwargs={"samples": plot_sample})
+                    sampler.sample(track_values=track_values, plot_kwargs={"samples": plot_sample})
 
                     plt.close('all')
 
@@ -248,12 +246,65 @@ def plot_results(results, dims, function_names, n_trials):
                 plt.savefig(PLOT_PATH)
                 plt.show()
 
+def plot_maximums(dims, functions, n_trials):
+    BASE_PATH = os.path.join("D:", os.sep, "UBAS", "projects", "nn_gp_max")
+    for function in functions:
+        for dim in dims:
+            SAVE_PATH = os.path.join(BASE_PATH, function, str(dim) + "D")
+            nn_solutions = []
+            gp_solutions = []
+            for trial in range(n_trials):
+                with open(os.path.join(SAVE_PATH, "nn", f"trial_{trial + 1}", "sampler_data.pkl"), 'rb') as f:
+                    nn_sampler = pickle.load(f)
+                with open(os.path.join(SAVE_PATH, "gp", f"trial_{trial + 1}", "sampler_data.pkl"), 'rb') as f:
+                    gp_sampler = pickle.load(f)
+                nn_inputs = nn_sampler.x_exact
+                gp_inputs = gp_sampler.x_exact
+                nn_outputs = nn_sampler.y_exact
+                gp_outputs = gp_sampler.y_exact
+                initial_points = nn_sampler.n_initial_points
+                batch_points = nn_sampler.n_batch_points
+                n_iterations = nn_sampler.n_iterations
+                nn_array = np.zeros(n_iterations+1)
+                gp_array = np.zeros(n_iterations+1)
+                n_samples = np.empty_like(nn_array)
+                for i in range(n_iterations+1):
+                    index = initial_points + batch_points * i
+                    nn_array[i] = np.max(nn_outputs[:index])
+                    gp_array[i] = np.max(gp_outputs[:index])
+                    n_samples[i] = index
+                nn_solutions.append(nn_array)
+                gp_solutions.append(gp_array)
+            PLOT_PATH = os.path.join(SAVE_PATH, f"{function}_{dim}D_maxima_nn_gp.png")
+
+            nn_solutions = np.array(nn_solutions)
+            gp_solutions = np.array(gp_solutions)
+            nn_mean = np.mean(nn_solutions, axis=0)
+            gp_mean = np.mean(gp_solutions, axis=0)
+
+            fig, ax = plt.subplots(figsize=(8, 8))
+            for i, sol in enumerate(nn_solutions):
+                ax.plot(n_samples, sol, color="black", alpha=0.2, linestyle='dashed')
+                ax.plot(n_samples, gp_solutions[i], color='blue', alpha=0.2, linestyle='solid')
+            ax.plot(n_samples, nn_mean, color='black', linestyle='dashed', label='Neural Network')
+            ax.plot(n_samples, gp_mean, color='blue', linestyle='solid', label='Gaussian Process')
+            ax.set_xlabel("Number of Samples")
+            ax.set_ylabel("Maximum Value")
+            ax.legend()
+            ax.set_title(f"Maximum Value Comparison: {dim}D {function}")
+            plt.tight_layout()
+            plt.savefig(PLOT_PATH)
+            plt.show()
 
 if __name__ == "__main__":
-    results = ["mse", "mean_relative_error", "max_absolute_error", "mean_width", "max_width", "coverage", "exponent"]
+    #results = ["mse", "mean_relative_error", "max_absolute_error", "mean_width", "max_width", "coverage", "exponent"]
+    #dims = [4]
+    #function_names = ["TwinPeak"]
+    #n_trials = 3
+    #plot_results(results, dims, function_names, n_trials)
+    #test_twin_peaks(mode='max')
+    #test_central_peak_functions(mode='max')
+    functions = ["central_peak_exp_1", "central_peak_exp_15"]
     dims = [4]
-    function_names = ["TwinPeak"]
-    n_trials = 3
-    plot_results(results, dims, function_names, n_trials)
-    #test_twin_peaks()
-    #test_central_peak_functions()
+    n_trials = 1
+    plot_maximums(dims, functions, n_trials)

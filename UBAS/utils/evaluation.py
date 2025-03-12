@@ -46,7 +46,6 @@ class EvalObject:
     max_width: float = None
     coverage: float = None
 
-
 def evaluate_performance(y_preds, y_bounds, y_true=None, include_mre=False) -> EvalObject:
     """
     Evaluation of model performance. If y_true is included, width, error, and coverage metrics are calculated.
